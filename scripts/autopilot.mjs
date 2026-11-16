@@ -80,6 +80,8 @@ const DEFAULTS = {
   commit: true,
   push: false,
   seedCount: 3,
+  retries: 2,
+  retryDelaySeconds: 30,
 };
 
 /* ------------------------------------------------------------------- state */
@@ -458,14 +460,14 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
   return summarizeStream(result);
 }
 
-/** Read the NDJSON run back: session id, tool calls, final answer. */
-function summarizeStream(result) {
-  writeFileSync(path.join(paths.dir, 'last-round.jsonl'), result.output ?? '', 'utf8');
+/** Parse the NDJSON stream: session id, tool calls, final answer, failure. */
+function parseStream(output) {
   let sessionId = null;
   let final = '';
   let text = '';
+  let error = '';
   const tools = [];
-  for (const line of (result.output ?? '').split('\n')) {
+  for (const line of (output ?? '').split('\n')) {
     if (!line.trim().startsWith('{')) continue;
     let event;
     try {
@@ -480,19 +482,36 @@ function summarizeStream(result) {
     }
     if (event.type === 'text' && typeof event.text === 'string') text += event.text;
     if (event.type === 'final' && typeof event.text === 'string') final = event.text;
+    // A transport failure still exits 0 and prints an empty final, so the
+    // stream is the only place that says the round never happened.
+    if (event.type === 'status' && event.reason?.kind === 'error') {
+      const detail = event.reason.error ?? {};
+      error = `${detail.code ?? 'error'}: ${detail.message ?? 'the agent failed'}`;
+    }
   }
+  return { sessionId, final: (final || text).trim(), tools, error };
+}
 
-  const answer = (final || text).trim();
-  console.log(answer ? `agent: ${answer.slice(0, 1_500)}` : 'agent: (no final answer)');
+/** Read the NDJSON run back and say what happened, in one place. */
+function summarizeStream(result) {
+  writeFileSync(path.join(paths.dir, 'last-round.jsonl'), result.output ?? '', 'utf8');
+  const { sessionId, final: answer, tools, error } = parseStream(result.output);
+
+  if (error) console.log(`agent: ${error}`);
+  else console.log(answer ? `agent: ${answer.slice(0, 1_500)}` : 'agent: (no final answer)');
   if (tools.length) console.log(`tools: ${[...new Set(tools)].join(', ')}`);
-  log(`agent session ${sessionId ?? 'unknown'}; tools ${tools.length}; answer ${answer.length} chars`);
-  return { code: result.code, sessionId, final: answer, tools };
+  log(
+    `agent session ${sessionId ?? 'unknown'}; tools ${tools.length}; answer ${answer.length} chars` +
+      (error ? `; error ${error}` : ''),
+  );
+  return { code: result.code, sessionId, final: answer, tools, error };
 }
 
 /**
  * A one-shot CLI that answers nothing is worse than one that fails: the loop
  * would "succeed" every round without touching a line. Ask the agent for a
- * short answer once, and stop before round one when it stays silent.
+ * short answer and require a real `final`; a provider transport error counts as
+ * "not answering", because dsh exits 0 on it.
  */
 async function probeAgent(custom) {
   const probeSession = `aether-probe-${Date.now().toString(36)}`;
@@ -503,24 +522,22 @@ async function probeAgent(custom) {
       .replaceAll('{{session}}', probeSession);
     writeFileSync(path.join(paths.dir, 'probe-prompt.txt'), prompt, 'utf8');
     const result = await runShell(line, { timeoutMs: 120_000 });
-    return { ok: result.code === 0 && result.output.trim().length > 0, output: result.output.slice(-400), code: result.code };
+    const text = result.output.trim();
+    return { ok: result.code === 0 && text.length > 0, reason: result.code === 0 ? '' : `exit ${result.code}` };
   }
 
   const isWindows = process.platform === 'win32';
   const result = isWindows
     ? await run(
         'powershell',
-        [
-          '-NoProfile',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          `& dsh headless --session-id "${probeSession}" "${prompt}"`,
-        ],
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `& dsh headless --json "${prompt}"`],
         { timeoutMs: 120_000 },
       )
-    : await run('dsh', ['headless', '--session-id', probeSession, prompt], { timeoutMs: 120_000 });
-  return { ok: result.code === 0 && result.output.trim().length > 0, output: result.output.slice(-400), code: result.code };
+    : await run('dsh', ['headless', '--json', prompt], { timeoutMs: 120_000 });
+
+  const { final, error } = parseStream(result.output);
+  const reason = error || (final ? '' : 'no final answer');
+  return { ok: result.code === 0 && !reason, reason };
 }
 
 function promptFor(item, state, gateSummary) {
@@ -715,6 +732,8 @@ if (has('--status')) {
   const noAgent = has('--no-agent');
   const customAgent = value('--agent-cmd', '');
   const timeoutMs = num('--timeout', DEFAULTS.timeoutMinutes) * 60_000;
+  const retries = num('--retries', DEFAULTS.retries);
+  const retryDelaySeconds = num('--retry-delay', DEFAULTS.retryDelaySeconds);
 
   if (!dryRun) lock();
   let state = readState();
@@ -722,16 +741,24 @@ if (has('--status')) {
 
   if (!dryRun && !noAgent && !has('--no-probe')) {
     process.stdout.write('· probing the agent … ');
-    const probe = await probeAgent(customAgent);
-    process.stdout.write(probe.ok ? 'answered\n' : 'SILENT\n');
-    log(`agent probe: ${probe.ok ? 'ok' : `silent (exit ${probe.code})`}`);
+    let probe = await probeAgent(customAgent);
+    let tries = 0;
+    while (!probe.ok && tries < retries) {
+      tries += 1;
+      process.stdout.write(`retry ${tries}/${retries} … `);
+      await new Promise((resolve) => setTimeout(resolve, retryDelaySeconds * 1_000));
+      probe = await probeAgent(customAgent);
+    }
+    process.stdout.write(probe.ok ? 'answered\n' : 'UNAVAILABLE\n');
+    log(`agent probe: ${probe.ok ? 'ok' : `unavailable (${probe.reason})`}`);
     if (!probe.ok && !has('--force')) {
       console.error(
         [
-          'The one-shot agent produced no answer, so a round would change nothing.',
-          'For the dsh headless profile this usually means its credentials are missing:',
-          '  the headless profile reads API keys from the launch environment, <cwd>/.env or $DSH_HOME/.env,',
-          '  and ignores keys saved in the GUI.',
+          `The one-shot agent did not answer (${probe.reason}), so a round would change nothing.`,
+          'For the dsh headless profile this usually means one of:',
+          '  - the provider is unreachable right now (run again in a minute), or',
+          '  - its credentials are missing: the headless profile reads API keys from the launch',
+          '    environment, <cwd>/.env or $DSH_HOME/.env, and ignores keys saved in the GUI.',
           'Point the loop at another CLI instead with:',
           '  node scripts/autopilot.mjs --once --agent-cmd "claude -p \\"$(cat {{promptFile}})\\""',
           'or pass --force to run anyway, or --no-agent to only run the gates.',
@@ -779,13 +806,28 @@ if (has('--status')) {
     const before = (await git('status --porcelain')).output;
 
     if (!noAgent) {
-      const result = await runAgent(state.sessionId, text, timeoutMs, customAgent, has('--resume'));
+      // A provider transport error is not a verdict on the task: the model
+      // endpoint blinked. Retry the same item with a fresh session before
+      // calling it a day.
+      let attempt = 0;
+      let result = await runAgent(state.sessionId, text, timeoutMs, customAgent, has('--resume'));
+      while (result.error && !result.code && attempt < retries) {
+        attempt += 1;
+        console.log(`  ! ${result.error} — retry ${attempt}/${retries} in ${retryDelaySeconds}s`);
+        log(`agent transport error (${result.error}); retry ${attempt}/${retries}`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelaySeconds * 1_000));
+        result = await runAgent(state.sessionId, text, timeoutMs, customAgent, false);
+      }
       if (result.sessionId) saveState({ sessionId: result.sessionId });
-      log(`agent exit ${result.code}`);
-      if (result.code !== 0) {
-        saveState({ phase: 'agent-failed', lastExitCode: result.code });
-        console.error(`agent exited ${result.code}; state saved, re-run to continue.`);
-        process.exitCode = result.code;
+      log(`agent exit ${result.code}${result.error ? ` (${result.error})` : ''}`);
+      if (result.code !== 0 || result.error) {
+        saveState({ phase: 'agent-failed', lastExitCode: result.code, lastError: result.error ?? '' });
+        console.error(
+          result.error
+            ? `agent failed after ${attempt + 1} attempt(s): ${result.error}. State saved; re-run to continue.`
+            : `agent exited ${result.code}; state saved, re-run to continue.`,
+        );
+        process.exitCode = result.code || 6;
         break;
       }
     }
@@ -825,6 +867,13 @@ if (has('--status')) {
         );
       }
       process.exitCode = 1;
+      break;
+    }
+
+    // `--no-agent` is a driver smoke test: gates only, and never a commit —
+    // otherwise whatever happened to be in the tree gets a round's name.
+    if (noAgent) {
+      console.log('--no-agent: gates only, nothing committed.');
       break;
     }
 
