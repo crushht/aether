@@ -2,11 +2,13 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, Copy, HelpCircle, Loader2, Sparkles, Square, Wrench } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, HelpCircle, Loader2, Sparkles, Square, Wrench } from 'lucide-react';
 import { useAgent } from '@/lib/agent/store';
 import { isModelReady, useModelTarget } from '@/lib/agent/workspace';
 import { useView } from '@/lib/store/view';
 import type { AgentLogEntry, AgentPendingRow } from '@/lib/agent/types';
+import { isToolCard } from '@/lib/agent/tool-cards';
+import { ToolCardPanel } from '@/components/agent/chat/tool-card';
 import { PRIORITIES, STATUSES, type Issue } from '@/lib/types';
 import { usePeople } from '@/lib/people';
 import { useData } from '@/lib/store/data';
@@ -61,10 +63,56 @@ function localizeToolSummary(text: string, t: (key: string) => string) {
 export function LogRow({ item }: { item: AgentLogEntry }) {
   const t = useT();
   const [copied, setCopied] = React.useState(false);
+  const [cardOpen, setCardOpen] = React.useState(false);
   const summary = item.kind === 'tool' ? localizeToolSummary(item.text, t) : item.text;
 
   if (item.kind === 'tool') {
     const key = typeof item.args?.key === 'string' ? item.args.key : null;
+    const card = isToolCard(item.card) ? item.card : null;
+
+    // a search hit list or an artifact report: same row, expandable body
+    if (card) {
+      const label =
+        card.kind === 'search'
+          ? [
+              card.query ? `“${card.query}”` : '',
+              t('{n} hits', { n: card.hits.length }),
+              card.source,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : `${card.name} · ${card.format} · ${t('entropy {value}', { value: card.entropy.toFixed(2) })}`;
+      return (
+        <div data-agent-tool={item.name} data-agent-tool-card={card.kind}>
+          <button
+            type="button"
+            aria-expanded={cardOpen}
+            onClick={() => setCardOpen((value) => !value)}
+            className="flex w-full items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
+          >
+            <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />
+            <span className="shrink-0 font-mono text-[12.5px] text-t3">{item.name}</span>
+            <span className="min-w-0 flex-1 truncate text-t4">{label}</span>
+            {item.ok ? (
+              <Check size={11} strokeWidth={2.4} className="mt-[3px] shrink-0 text-[#7ac977]" />
+            ) : (
+              <AlertTriangle size={11} strokeWidth={2.2} className="mt-[3px] shrink-0 text-[#f08080]" />
+            )}
+            <ChevronDown
+              size={11}
+              strokeWidth={2}
+              className={cn('mt-[3px] shrink-0 text-t4 transition-transform duration-150', cardOpen ? 'rotate-180' : '')}
+            />
+          </button>
+          {cardOpen ? (
+            <div className="mb-1 ml-[18px] rounded-r6 bg-[var(--bg-elevated)] px-1.5 py-1 shadow-[inset_0_0_0_1px_var(--line-subtle)]">
+              <ToolCardPanel card={card} />
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
     const content = (
       <>
         <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />

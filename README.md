@@ -63,6 +63,7 @@ Aether 反过来——**Agent 是主线**，它和工作区共用同一套工具
 - **多 Provider**：OpenAI、DeepSeek、OpenRouter、Moonshot、智谱 GLM、Ollama / LM Studio、任意自建端点
 - **按场景路由**：工作区聊天、议题面板、项目、工作流各自选 Provider 与模型
 - **工具调用**：读写议题 / 项目 / 知识 / 记忆 / 工作流，一步一句可读的说明
+- **工具结果卡片**：`web_search` 的命中列表与 `inspect_artifact` 的报告在对话流里点一下展开——标题/域名/摘要，格式/熵/结构/指示器/内嵌载荷/字符串，sha256 一键复制
 - **联网**：`web_search` 多引擎链（DuckDuckGo → Bing → 搜狗 → 百度 → 360，可用 `AETHER_SEARCH_URL` 指向 SearXNG）+ `fetch_url` 读正文与外链（重定向逐跳校验，私网地址拒绝）
 - **静态逆向**：`inspect_artifact` 对附件或粘贴内容做分诊 —— 格式与 magic、PE / ELF / Mach-O 头、ZIP / APK 目录、熵（是否加壳）、ASCII 与 UTF-16 字符串、URL / IP / 命令 / API 指示器、内嵌 base64/hex 载荷、hexdump；只读，不执行样本
 - **审批**：写工具逐次确认，或「总是允许」（按账号保存在本浏览器）
@@ -223,7 +224,7 @@ node scripts/autopilot.mjs --seed        # 从 docs/11-产品差距清单.md 取
 - [ ] 服务端搜索索引（知识库目前是内存检索）
 - [ ] 数据层分片（大工作区写入放大）
 - [x] 邮件服务设置页（SMTP 可视化配置，替代 `.env.local`）
-- [ ] Agent 工具结果卡片化（搜索结果 / 逆向报告在对话流内展开）
+- [x] Agent 工具结果卡片化（搜索结果 / 逆向报告在对话流内展开）
 
 已经落地的改动记在 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 

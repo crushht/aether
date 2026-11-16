@@ -5,6 +5,8 @@
  * scene route, and the tools only ever see those shapes.
  */
 
+import type { ToolCard } from './tool-cards';
+
 /* ------------------------------------------------------------------ routes */
 
 export type ModelRouteKey = 'chat' | 'issue' | 'workflow' | 'knowledge';
@@ -218,6 +220,8 @@ export interface AgentLogEntry {
   name?: string;
   ok?: boolean;
   args?: Record<string, unknown>;
+  /** structured receipt (search hits, artifact report) — expandable in the chat */
+  card?: ToolCard;
   attachments?: AgentAttachment[];
   /** thumbs on a final answer; local-first, mirrored with the conversation */
   feedback?: 'up' | 'down';

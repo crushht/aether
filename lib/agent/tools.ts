@@ -5,6 +5,7 @@ import { RELATION_INVERSE, STATUSES, type Issue, type Priority, type RelationTyp
 import { useWorkspace } from './workspace';
 import { chunkText } from './search';
 import { hybridRankKnowledge } from './semantic';
+import { buildInspectCard, buildSearchCard, type ToolCard } from './tool-cards';
 
 export interface ToolSpec {
   name: string;
@@ -16,6 +17,8 @@ export interface ToolOutcome {
   ok: boolean;
   content: string;
   summary: string;
+  /** structured receipt for the transcript card; only some tools produce one */
+  card?: ToolCard;
 }
 
 const statusKeys = STATUSES.map((status) => status.key);
@@ -49,7 +52,8 @@ function findUser(value: unknown) {
   );
 }
 
-const ok = (content: string, summary = content): ToolOutcome => ({ ok: true, content, summary });
+const ok = (content: string, summary = content, card?: ToolCard): ToolOutcome =>
+  card ? { ok: true, content, summary, card } : { ok: true, content, summary };
 const fail = (content: string): ToolOutcome => ({ ok: false, content, summary: content });
 
 export const TOOLS: ToolSpec[] = [
@@ -745,6 +749,7 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       if (!response.ok || !json.ok) return fail(json.error ?? `The search failed (${response.status}).`);
       const hits = json.results ?? [];
       if (!hits.length) return ok(`Nothing found for "${query}".`);
+      const card = buildSearchCard({ query, provider: json.provider, results: hits });
       return ok(
         [
           ...hits.map(
@@ -754,6 +759,7 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
           `Read one with fetch_url before quoting it. Source: ${json.provider ?? 'web search'}.`,
         ].join('\n'),
         `${hits.length} 条网页结果`,
+        card ?? undefined,
       );
     }
 
@@ -878,6 +884,21 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       const embedded = (report.embedded ?? []).map((item) => `- ${item.kind} blob → ${item.format} (${item.bytes}B)`).join('\n');
       const strings = (report.strings ?? []).slice(0, 20).join('\n');
 
+      const card = buildInspectCard({
+        name: report.name,
+        size: report.size,
+        format: report.format,
+        entropy: report.entropy,
+        packed: report.packed,
+        hashes: json.hashes,
+        structure,
+        indicators: report.indicators,
+        embedded: report.embedded,
+        notes: report.notes,
+        strings: report.strings,
+        hex: report.hex,
+      });
+
       return ok(
         [
           `${report.name} · ${report.size} bytes · ${report.format.label}${report.format.detail ? ` · ${report.format.detail}` : ''}`,
@@ -893,6 +914,7 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
           .filter(Boolean)
           .join('\n\n'),
         `${report.format.label} · entropy ${report.entropy}`,
+        card,
       );
     }
 

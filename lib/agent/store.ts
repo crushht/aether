@@ -31,6 +31,8 @@ const SESSION_KEY = `linear-lab:agent:sessions:${currentUserId()}`;
 const MAX_PERSISTED_SESSIONS = 40;
 const MAX_PERSISTED_LOG = 120;
 const MAX_PERSISTED_MESSAGES = 24;
+/** tool cards kept per transcript when it is written to storage */
+const MAX_PERSISTED_CARDS = 12;
 
 const BASE_PROMPT = `You are the agent inside Aether, a workspace that combines issue tracking with an AI agent.
 You can read and change the workspace with tools. Rules:
@@ -133,6 +135,25 @@ export function estimateTokens(text: string) {
 const stripImages = (messages: AgentMessage[]) =>
   messages.map((message) => (message.images?.length ? { ...message, images: undefined } : message));
 
+/**
+ * Tool cards are the only heavy part of a log entry (a search hit list, an
+ * artifact report). Keep the newest few so a long transcript cannot eat the
+ * storage quota; older rows keep their one-line receipt.
+ */
+function capCards(log: AgentLogEntry[], keep = MAX_PERSISTED_CARDS): AgentLogEntry[] {
+  const out = [...log];
+  let kept = 0;
+  for (let index = out.length - 1; index >= 0; index -= 1) {
+    if (!out[index].card) continue;
+    if (kept < keep) {
+      kept += 1;
+      continue;
+    }
+    out[index] = { ...out[index], card: undefined };
+  }
+  return out;
+}
+
 /** Sessions survive a reload, but only the tail of each transcript. */
 function persistSessions(sessions: Record<string, AgentSession>) {
   if (typeof window === 'undefined') return;
@@ -146,7 +167,7 @@ function persistSessions(sessions: Record<string, AgentSession>) {
           const interrupted = session.status === 'running' || session.status === 'waiting';
           const log = session.log.filter((item) => item.kind !== 'status').slice(-MAX_PERSISTED_LOG);
           const firstUser = log.findIndex((item) => item.kind === 'user');
-          const validLog = firstUser > 0 ? log.slice(firstUser) : log;
+          const validLog = capCards(firstUser > 0 ? log.slice(firstUser) : log);
           return {
             ...session,
             status: interrupted ? 'error' as const : session.status,
@@ -166,7 +187,7 @@ function persistSessions(sessions: Record<string, AgentSession>) {
 /** Mirror one workspace conversation to the account so another device can continue it. */
 function syncChatSession(session: AgentSession | undefined) {
   if (typeof window === 'undefined' || !session?.targetId.startsWith('chat:')) return;
-  const snapshot = { ...session, log: session.log.map((item) => ({ ...item })), messages: stripImages(session.messages) };
+  const snapshot = { ...session, log: capCards(session.log).map((item) => ({ ...item })), messages: stripImages(session.messages) };
   const timer = syncTimers.get(session.targetId);
   if (timer) window.clearTimeout(timer);
   syncTimers.set(session.targetId, window.setTimeout(() => {
@@ -815,7 +836,12 @@ export const useAgent = create<AgentState>((set, get) => {
               usage: { ...usage },
               log: [
                 ...session.log.filter((item) => item.kind !== 'status'),
-                entry('tool', outcome.summary, { name: call.name, ok: outcome.ok, args: call.args }),
+                entry('tool', outcome.summary, {
+                  name: call.name,
+                  ok: outcome.ok,
+                  args: call.args,
+                  ...(outcome.card ? { card: outcome.card } : {}),
+                }),
               ],
             }));
           }

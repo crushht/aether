@@ -6,6 +6,9 @@
   QQ 邮箱真实投递与 code 登录实测通过；规则（10 分钟、5 次、60s 冷却、每小时 6 封）由 `lib/email-rules.ts` 前后端共用。
 - **Agent 联网**：`web_search` 五引擎链式回退（DDG/Bing/搜狗/百度/360，两套解析器），`fetch_url` 带外链与逐跳重定向校验。
 - **Agent 静态逆向**：`inspect_artifact`（PE/ELF/Mach-O/ZIP-APK/熵/字符串/指示器/内嵌载荷/hexdump + sha256·sha1·md5）。
+- **Agent 工具结果卡片**：`web_search` 命中列表与 `inspect_artifact` 报告在对话流里折叠展开——
+  卡片由纯函数构建并裁剪（`lib/agent/tool-cards.ts`），随会话持久化但只保留最新 12 张，
+  读回时用 `isToolCard` 校验（坏数据退化为原来的一行回执）；sha256/md5 一键复制。
 - **自主循环**：`scripts/autopilot.mjs` — 队列 → headless agent → 门禁 → 本地提交（`--push` 才推送），锁与断点续跑。
 - 新增回归 4 组、浏览器验收 1 个（`scripts/e2e-email-code.mjs`，含 API 契约与登录页 UI）。
 - 对标矩阵与候选队列落在 `docs/11-产品差距清单.md`，循环说明在 `docs/12-自主改进循环.md`。

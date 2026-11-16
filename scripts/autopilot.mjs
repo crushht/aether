@@ -34,6 +34,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -140,8 +141,8 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /* ------------------------------------------------------------------- gates */
 
 /** Spawn without a shell: args are passed through untouched. */
-function run(command, args, { timeoutMs = 0, inherit = false, extraEnv } = {}) {
-  return spawnAndCollect(command, args, { timeoutMs, inherit, shell: false, extraEnv });
+function run(command, args, { timeoutMs = 0, inherit = false, extraEnv, onLine } = {}) {
+  return spawnAndCollect(command, args, { timeoutMs, inherit, shell: false, extraEnv, onLine });
 }
 
 /**
@@ -149,11 +150,16 @@ function run(command, args, { timeoutMs = 0, inherit = false, extraEnv } = {}) {
  * without a shell. One command line string keeps that honest (no args array to
  * mis-quote) and avoids the shell-args deprecation.
  */
-function runShell(commandLine, { timeoutMs = 0, inherit = false, extraEnv } = {}) {
-  return spawnAndCollect(commandLine, [], { timeoutMs, inherit, shell: true, extraEnv });
+function runShell(commandLine, { timeoutMs = 0, inherit = false, extraEnv, onLine } = {}) {
+  return spawnAndCollect(commandLine, [], { timeoutMs, inherit, shell: true, extraEnv, onLine });
 }
 
-function spawnAndCollect(command, args, { timeoutMs, inherit, shell, extraEnv }) {
+/**
+ * Collect a child's output, and — when `onLine` is given — hand every complete
+ * line over as it arrives. A long agent round otherwise looks dead: the JSON
+ * event stream only becomes visible when the child exits.
+ */
+function spawnAndCollect(command, args, { timeoutMs, inherit, shell, extraEnv, onLine }) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: root,
@@ -162,6 +168,7 @@ function spawnAndCollect(command, args, { timeoutMs, inherit, shell, extraEnv })
       shell,
     });
     let output = '';
+    let pending = '';
     let timer = null;
     if (timeoutMs) {
       timer = setTimeout(() => {
@@ -169,8 +176,27 @@ function spawnAndCollect(command, args, { timeoutMs, inherit, shell, extraEnv })
         resolve({ code: 124, output: `${output}\n[timeout after ${Math.round(timeoutMs / 60000)} min]` });
       }, timeoutMs);
     }
-    child.stdout?.on('data', (chunk) => (output += chunk.toString()));
-    child.stderr?.on('data', (chunk) => (output += chunk.toString()));
+    const feed = (chunk, fromStderr = false) => {
+      const text = chunk.toString();
+      output += text;
+      if (!onLine || fromStderr) return;
+      pending += text;
+      let index = pending.indexOf('\n');
+      while (index >= 0) {
+        const line = pending.slice(0, index).replace(/\r$/, '');
+        pending = pending.slice(index + 1);
+        if (line.trim()) {
+          try {
+            onLine(line);
+          } catch {
+            /* a broken progress line must never kill the run */
+          }
+        }
+        index = pending.indexOf('\n');
+      }
+    };
+    child.stdout?.on('data', (chunk) => feed(chunk));
+    child.stderr?.on('data', (chunk) => feed(chunk, true));
     child.on('error', (error) => {
       if (timer) clearTimeout(timer);
       resolve({ code: 127, output: String(error) });
@@ -270,18 +296,41 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
 
   const isWindows = process.platform === 'win32';
   const adopt = resume && sessionId ? ` --session-id "${sessionId}"` : '';
+  const started = Date.now();
+  const onLine = (line) => {
+    if (!line.startsWith('{')) return;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const at = Math.round((Date.now() - started) / 1000);
+    if (event.type === 'session') {
+      console.log(`  [${at}s] session ${String(event.sessionId ?? '').slice(0, 24)}…`);
+    } else if (event.type === 'tool_call') {
+      const name = event.name ?? event.tool ?? event.call?.name;
+      if (name) console.log(`  [${at}s] · ${name}`);
+    } else if (event.type === 'status' && event.status === 'error') {
+      console.log(`  [${at}s] ! ${String(event.message ?? 'error').slice(0, 160)}`);
+    }
+  };
   const result = isWindows
-    ? await run('powershell', [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        `& dsh headless --json${adopt} (Get-Content -Raw -LiteralPath "${promptFile}")`,
-      ], { timeoutMs })
+    ? await run(
+        'powershell',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          `& dsh headless --json${adopt} (Get-Content -Raw -LiteralPath "${promptFile}")`,
+        ],
+        { timeoutMs, onLine },
+      )
     : await run(
         'dsh',
         ['headless', '--json', ...(resume && sessionId ? ['--session-id', sessionId] : []), prompt],
-        { timeoutMs },
+        { timeoutMs, onLine },
       );
 
   return summarizeStream(result);
@@ -388,10 +437,31 @@ async function status() {
   } catch {
     /* keep the folder name */
   }
+
+  // Is a loop alive right now? The lock holds its pid; mtime is when it started.
+  let running = null;
+  try {
+    const pid = Number(readFileSync(paths.lock, 'utf8').trim());
+    if (pid) {
+      process.kill(pid, 0);
+      const since = statSync(paths.lock).mtime;
+      running = {
+        pid,
+        since: since.toISOString(),
+        minutes: Math.round((Date.now() - since.getTime()) / 60_000),
+        item: state.lastItem ?? null,
+        phase: state.phase ?? null,
+      };
+    }
+  } catch {
+    /* no loop running */
+  }
+
   console.log(
     JSON.stringify(
       {
         project: name,
+        running,
         pending: items.length,
         next: items[0] ?? (gaps.length ? `(queue empty — ${gaps.length} candidate(s) can be seeded)` : null),
         candidates: gaps.length,

@@ -12,7 +12,7 @@
 
 - [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
 - [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
-- [ ] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
+- [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
 - [ ] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
 - [ ] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
 - [ ] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
@@ -26,6 +26,7 @@
 
 ## 已完成
 
+- 2026-11-16 Agent 工具结果卡片：`web_search` 命中列表与 `inspect_artifact` 报告在对话流里折叠展开。纯逻辑 `lib/agent/tool-cards.ts`（URL 只放行 http(s)、hit/snippet/结构/指示器/字符串逐个裁剪、无效 sha256/md5 丢弃、`isToolCard` 读回校验、`formatBytes`）；`ToolOutcome.card` 由工具层构建，`AgentLogEntry.card` 随会话持久化且 `persistSessions`/`syncChatSession` 只保留最新 12 张（防配额），坏卡片或旧会话退化为原来的一行回执；界面 `components/agent/chat/tool-card.tsx` + `LogRow` 折叠头（查询/格式/熵/成功率），sha256·md5 一键复制，外链 `target=_blank rel=noopener noreferrer`。验证：regression 新增 1 组（25 条断言：协议过滤、host 归一、字节格式、裁剪上限、stringTotal、哈希校验、JSON 往返与守卫）；`scripts/e2e-tool-cards.mjs` 在真实 dev 注入带卡片的完成态会话 → 两张卡片折叠/展开、命中链接属性、报告字段、sha256 复制回读、坏卡片降级、localStorage 落盘；截图 `docs/checks/263-agent-tool-cards.png`；tsc + eslint + i18n(0 missing / 0 hardcoded) + build 通过。
 - 2026-11-16 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` —— API 段覆盖发送、60s 冷却（429 + Retry-After）、错误码递减、验证码注册、验证码登录、重置密码、重置后旧会话失效；浏览器段覆盖「邮箱验证码」页签、发送按钮、本地码提示、错误内联提示；`AETHER_EMAIL_ECHO=1` 下不实际发信。
 - 2026-11-16 邮件服务设置页：新增设置 → 邮件面板（主机/端口/账号/授权码/发件人、TLS 两档、QQ/163/Gmail/Outlook 预设）；授权码经 `encryptSecret`（AES-256-GCM）存 `<数据目录>/mail.json`，接口只回 `hasPass` 与末两位。纯逻辑抽到 `lib/mail-settings.ts`（预设推断、归一、字段校验、明文仅限本机/内网、`.env.local` 解析、保存优先于环境的优先级），`lib/server/mail-settings.ts` 负责文件读写；`mailer` 改异步配置并新增 `verifyMail`；新增 `GET/PUT/POST/DELETE /api/settings/mail`（测试连接、发送测试邮件、清除回退，写操作仅 owner，限流）。保存后 `/api/auth` 的 `emailCode.available`/`source` 无需重启即时变化。验证：`scripts/e2e-mail-settings.mjs`（本地假 SMTP 中继，含 AUTH LOGIN + DATA 断言、保存即生效、授权码不回显、502 拒绝、浏览器面板/测试/报错、清除回退）通过；截图 `docs/checks/262-mail-settings.png`；regression 新增 1 组（预设/归一/字段错误/TLS 提示/环境回退/优先级）；tsc + lint + i18n + build 通过。
 - 2026-11-16 邮箱验证码登录/注册：SMTP 客户端（node:tls，AUTH LOGIN/PLAIN、STARTTLS）、六位码哈希存储（10 分钟、5 次、60s 冷却、每小时 6 封）、登录/注册/找回密码三条路由；真实 QQ 邮箱投递 + code 登录实测通过；`lib/email-rules.ts`、`lib/smtp.ts` 回归 2 组。

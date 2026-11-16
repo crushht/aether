@@ -833,6 +833,89 @@ async function run() {
   assert.ok(packed.entropy > 7 && packed.packed, 'high-entropy bytes read as packed');
   console.log('PASS artifact triage: magic bytes, PE headers, entropy, strings, indicators and embedded payloads');
 
+  // Tool receipts: the bounded cards the transcript can expand. Everything is
+  // clipped here because a card is written back into the session snapshot.
+  const cards = await loadTs(path.resolve('lib/agent/tool-cards.ts'));
+  assert.equal(cards.safeHttpUrl('javascript:alert(1)'), null);
+  assert.equal(cards.safeHttpUrl('file:///etc/passwd'), null);
+  assert.equal(cards.safeHttpUrl('not a url'), null);
+  assert.equal(cards.safeHttpUrl('https://example.com/a?b=1'), 'https://example.com/a?b=1');
+  assert.equal(cards.hostOf('https://www.example.com/docs'), 'example.com');
+  assert.equal(cards.hostOf(''), '');
+  assert.equal(cards.formatBytes(512), '512 B');
+  assert.equal(cards.formatBytes(1536), '1.5 KB');
+  assert.equal(cards.formatBytes(1024 * 1024 * 10), '10 MB');
+  assert.equal(cards.formatBytes(-4), '0 B');
+
+  const searchCard = cards.buildSearchCard({
+    query: '  next.js   streaming ',
+    provider: 'duckduckgo',
+    results: [
+      { title: '  Streaming  docs ', url: 'https://www.nextjs.org/docs/streaming', snippet: 'x'.repeat(500) },
+      { title: 'Dropped: no url and no title', url: 'javascript:alert(1)', snippet: '' },
+      { title: 'Second hit', url: 'https://example.com/two', snippet: 'short' },
+      { title: 'Third', url: 'https://example.com/three', snippet: '' },
+      { title: 'Fourth', url: 'https://example.com/four', snippet: '' },
+      { title: 'Fifth', url: 'https://example.com/five', snippet: '' },
+      { title: 'Sixth', url: 'https://example.com/six', snippet: '' },
+      { title: 'Seventh', url: 'https://example.com/seven', snippet: '' },
+    ],
+  });
+  assert.equal(searchCard.kind, 'search');
+  assert.equal(searchCard.query, 'next.js streaming');
+  assert.equal(searchCard.source, 'duckduckgo');
+  assert.equal(searchCard.hits.length, cards.CARD_LIMITS.hits, 'hit list is capped');
+  assert.equal(searchCard.hits[0].title, 'Streaming docs');
+  assert.equal(searchCard.hits[0].url, 'https://www.nextjs.org/docs/streaming');
+  assert.equal(searchCard.hits[0].snippet.length, cards.CARD_LIMITS.snippet);
+  assert.equal(searchCard.hits[1].title, 'Dropped: no url and no title', 'a hit with no usable URL is kept as text');
+  assert.equal(searchCard.hits[1].url, '');
+  assert.equal(cards.buildSearchCard({ query: 'x', results: [] }), null);
+  assert.equal(cards.buildSearchCard({}), null);
+
+  const inspectCard = cards.buildInspectCard({
+    name: 'sample.exe',
+    size: 4096,
+    format: { label: 'PE executable', id: 'pe', detail: 'x64 · console' },
+    entropy: 7.3456,
+    packed: true,
+    hashes: { sha256: 'A'.repeat(64), md5: 'not-a-hash' },
+    structure: Array.from({ length: 20 }, (_, index) => `line ${index}`),
+    indicators: Array.from({ length: 30 }, (_, index) => ({ kind: 'url', value: `https://evil.example/${index}` })),
+    embedded: Array.from({ length: 12 }, (_, index) => ({ kind: 'base64', bytes: index * 10, format: 'ZIP' })),
+    notes: ['note a', 'note b', 'note c', 'note d'],
+    strings: Array.from({ length: 25 }, (_, index) => `string-${index}-${'y'.repeat(300)}`),
+    hex: ['0f 01 02'],
+  });
+  assert.equal(inspectCard.kind, 'inspect');
+  assert.equal(inspectCard.name, 'sample.exe');
+  assert.equal(inspectCard.entropy, 7.35, 'entropy is rounded to two decimals');
+  assert.equal(inspectCard.packed, true);
+  assert.equal(inspectCard.sha256, 'a'.repeat(64), 'a hex sha256 is kept, lower-cased');
+  assert.equal(inspectCard.md5, undefined, 'a malformed hash is dropped');
+  assert.equal(inspectCard.structure.length, cards.CARD_LIMITS.structure);
+  assert.equal(inspectCard.indicators.length, cards.CARD_LIMITS.indicators);
+  assert.equal(inspectCard.embedded.length, cards.CARD_LIMITS.embedded);
+  assert.equal(inspectCard.notes.length, cards.CARD_LIMITS.notes);
+  assert.equal(inspectCard.strings.length, cards.CARD_LIMITS.strings);
+  assert.equal(inspectCard.stringTotal, 25, 'the card can still say how many strings there were');
+  assert.equal(inspectCard.strings[0].length, 200, 'each string line is clipped');
+  const bare = cards.buildInspectCard({});
+  assert.equal(bare.name, 'artifact');
+  assert.equal(bare.format, 'unknown');
+  assert.equal(bare.entropy, 0);
+  assert.deepEqual(bare.indicators, []);
+
+  assert.equal(cards.isToolCard(searchCard), true);
+  assert.equal(cards.isToolCard(inspectCard), true);
+  assert.equal(cards.isToolCard(JSON.parse(JSON.stringify(inspectCard))), true, 'a persisted card survives JSON');
+  assert.equal(cards.isToolCard({ kind: 'search', hits: [] }), false, 'missing fields are rejected');
+  assert.equal(cards.isToolCard({ kind: 'search', query: 'q', source: '', hits: [{ title: 't', url: '', snippet: 1 }] }), false);
+  assert.equal(cards.isToolCard({ kind: 'inspect', name: 'a' }), false);
+  assert.equal(cards.isToolCard({ kind: 'nope' }), false);
+  assert.equal(cards.isToolCard(null), false);
+  console.log('PASS tool cards: URL/hash validation, clipping, byte formatting and the persistence guard');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

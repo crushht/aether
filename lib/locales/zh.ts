@@ -1224,4 +1224,22 @@ export const zh: Record<string, string> = {
   '.env.local also has a relay ({host}); a saved entry outranks it.': '.env.local 里也有一份中继（{host}），已保存的配置优先。',
   'This relay is on this machine or the LAN, so mail is sent without TLS.': '这个中继在本机或局域网内，邮件将以明文投递。',
   'The test failed: {detail}': '测试失败：{detail}',
+
+  /* ------------------------------------------------------ agent tool cards */
+  '{n} hits': '{n} 条命中',
+  'No search hits': '没有命中结果',
+  'Source': '来源',
+  'entropy {value}': '熵 {value}',
+  'Format': '格式',
+  'Size': '大小',
+  'Entropy': '熵',
+  'Possibly packed': '疑似加壳／压缩',
+  'SHA-256': 'SHA-256',
+  'MD5': 'MD5',
+  'Structure': '结构',
+  'Notes': '备注',
+  'Indicators': '指示器',
+  'Embedded payloads': '内嵌载荷',
+  'Strings': '字符串',
+  'first {shown} of {total}': '前 {shown} / {total}',
 };
