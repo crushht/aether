@@ -17,8 +17,7 @@
 - [x] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
 - [x] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
 - [x] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
-- [ ] P2 `scripts/e2e-attachments.mjs` 复现：评论附件刷新后丢失（干净树上同样失败，先判定是测试的选择器/时序还是 `addComment` 的保存竞态，再决定修测试还是修产品）
-
+- [x] P2 `scripts/e2e-attachments.mjs` 复现：评论附件刷新后丢失（干净树上同样失败，先判定是测试的选择器/时序还是 `addComment` 的保存竞态，再决定修测试还是修产品）
 ## 阻塞（需要外部资产，不进入轮转队列）
 
 - [ ] P0 恢复 exe 图标与版本信息（需开发者模式或 CI 打包）
@@ -27,6 +26,7 @@
 
 ## 已完成
 
+- 2026-11-16 评论附件刷新丢失（判定为测试时序，不是产品 bug）：`scripts/e2e-attachments.mjs` 在 500ms 防抖落盘之前就 `goto` 刷新，附件还在内存里没 PUT 出去；加一段「轮询 `/api/workspace` 直到附件与评论文档真的进了快照」再刷新。证据：`git stash` 掉改动跑基线超时失败（exit 1），恢复后 `PASS browser: issue and comment attachments upload, persist, and delete`。
 - 2026-11-16 安全审计流收尾：第 6 轮交的 `scripts/e2e-security-audit.mjs` 有两处是「写了没验证」——(1) 用 `data-settings-tab` 判断登录成功，这个属性在源码里不存在，改成侧栏 `a[href="/inbox"]`；(2) 用掩码地址断言「看不到别人事件」，而两个测试账号同域掩码都是 `a***@example.invalid`，改成比 `actorId`；另把「本机来源」放宽为 loopback 或 `local`（Next dev 会从 socket 填 `X-Forwarded-For`，记的是 `::ffff:127.0.0.1`）。修完 `node scripts/e2e-security-audit.mjs` 两段全过（7 kinds、掩码、拒绝徽标、筛选、限额、账号隔离），截图 `docs/checks/266-security-audit.png`。
 - 2026-11-16 附件逆向入口：议题附件卡片的 ⋯ 菜单新增「分析」，一个请求打到 `/api/agent/inspect` 并在面板里渲染同一张 `inspect` 卡片（格式/大小/熵/加壳提示、sha256·md5 一键复制、结构、备注、指示器、内嵌载荷、字符串前 N / 总数字）。纯逻辑抽到 `lib/agent/inspect-report.ts`：`structureLines`（PE 头 + 分区行、ELF、Mach-O、ZIP 目录，分区 ≤10 / 条目 ≤15 / 单行 ≤300，字段先过 `oneLine` 去控制符再裁剪，嵌套行用 `·` 前缀因为卡片会 trim 掉缩进）、`inspectCardFromResponse`（失败响应、非报告形状、无 size 无 format 一律 null）、`inspectRequestBody`（dataUrl 优先于 text，无字节返回 null —— 界面直接说「没有可分析的字节」而不再打服务端）；`lib/agent/tools.ts` 的 `inspect_artifact` 改为复用同一对函数，回执与面板不会再对同一个样本给出两种描述。界面 `components/issue/attachment-analysis.tsx`（遮罩 + Escape 关闭，且 `stopPropagation` 掉全局 Escape 快捷键，否则会把背后的议题抽屉一起关掉）+ `attachments-section.tsx` 的 ⋯ 菜单（`aria-haspopup`/`aria-expanded`、点击外部关闭）。验证：regression 新增 1 组（30 条断言：无头/垃圾字段降级、分区与条目裁剪与 `· … N more`、控制符不落屏幕、ELF/Mach-O 行、哈希校验与大小写归一、失败响应与无 size 无 format 拒绝、dataUrl 优先、无字节拒绝、名称裁剪 200）；`scripts/e2e-attachment-inspect.mjs` 在真实 dev（AUTH_DISABLED=1，端口 4321）验收 —— API 段（MZ 字节 → `format.id=mz`、sha256 与本地 `createHash` 一致、空 artifact 与「既无 base64 也无 text」各 400）+ 浏览器段（⋯ 菜单开合与外部点击关闭、文本附件报告出 command/url 指示器与内嵌 `DOS executable (MZ)`、sha256 复制值等于附件字节的哈希、Escape 只关面板不关抽屉、PNG dataURL 按字节分析出 `PNG image`、无字节附件只显示本地提示且不渲染报告）；截图 `docs/checks/265-attachment-analysis.png`；tsc + eslint(0 problems) + i18n(0 missing / 0 hardcoded) 通过。
 

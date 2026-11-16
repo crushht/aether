@@ -60,6 +60,30 @@ try {
   assert.ok(await waitFor(`!!document.querySelector('[data-comment-attachments]')`), 'comment attachment must render');
   assert.ok((await evaluate(page, `document.querySelector('[data-comment-attachments]').innerText`)).includes('spec.md'));
 
+  // The store persists through a 500 ms debounce before it PUTs to the server.
+  // Navigating before that fires loses the edit entirely (no unload flush), so
+  // poll the server snapshot until both the attachment and the comment have
+  // landed — a stale `syncState === 'saved'` from the previous push is not
+  // proof, the persisted rows are.
+  const persisted = async () => {
+    try {
+      const snapshot = await (await fetch(`${base}/api/workspace`)).json();
+      const issue = (snapshot.issues ?? []).find((row) => row.id === issueId);
+      return Boolean(
+        issue &&
+          (issue.attachments ?? []).some((row) => row.name === 'notes.txt') &&
+          (issue.comments ?? []).some((row) => (row.attachments ?? []).some((file) => file.name === 'spec.md')),
+      );
+    } catch {
+      return false;
+    }
+  };
+  const deadline = Date.now() + 15000;
+  while (!(await persisted())) {
+    if (Date.now() > deadline) assert.fail('comment and attachments must reach the server snapshot before reload');
+    await wait(250);
+  }
+
   // Reload: both attachments survive the snapshot.
   await goto(page, `${base}/team/ENG`, 3000);
   await evaluate(page, `window.__AETHER_VIEW__.getState().openIssue('${issueId}')`);
