@@ -1140,6 +1140,150 @@ async function run() {
   );
   console.log('PASS attachment analysis: report mapping, header lines, clipping, and the request body');
 
+  // Security audit: an address is masked, a line is parsed defensively, and a
+  // member never sees someone else's events.
+  const secRange = await loadTs(path.resolve('lib/audit-range.ts'));
+  const audit = await loadTs(path.resolve('lib/security-audit.ts'), { './audit-range': secRange });
+
+  assert.equal(audit.maskEmail('Alice@Example.COM'), 'a***@example.com');
+  assert.equal(audit.maskEmail('a@b.co'), 'a***@b.co');
+  assert.equal(audit.maskEmail('no-at-sign'), 'n***', 'a value without @ keeps one character');
+  assert.equal(audit.maskEmail(''), '');
+  assert.equal(audit.maskEmail(null), '');
+  assert.equal(audit.auditText('a\nb\tc\u0000d', 20), 'a b c d');
+  assert.equal(audit.auditText('x'.repeat(50), 10).length, 10);
+  assert.equal(audit.auditText(42, 10), '');
+  assert.equal(audit.auditText({}, 10), '');
+
+  const base = Date.parse('2026-11-16T10:00:00.000Z');
+  const first = audit.normalizeSecurityEvent({
+    kind: 'sign_in',
+    ok: false,
+    at: base,
+    actorEmail: 'Bob@Example.com',
+    ip: '10.0.0.1',
+    ua: 'Mozilla/5.0 (Windows NT 10.0)',
+    detail: 'Wrong email or password. · password',
+  });
+  assert.equal(first.kind, 'sign_in');
+  assert.equal(first.ok, false);
+  assert.equal(first.actorEmail, 'b***@example.com', 'the audit never stores a full address');
+  assert.equal(first.at, '2026-11-16T10:00:00.000Z');
+  assert.match(first.id, /^ev_/);
+  assert.equal(audit.normalizeSecurityEvent({ kind: 'nope', ok: true }), null);
+  assert.equal(audit.normalizeSecurityEvent({ kind: 'sign_in', at: 'not a date' }), null);
+  assert.equal(audit.normalizeSecurityEvent({ kind: 'sign_in', at: 0 }), null);
+  assert.equal(audit.normalizeSecurityEvent(null), null);
+
+  const stable = audit.normalizeSecurityEvent({ kind: 'sign_out', at: base });
+  const stableAgain = audit.normalizeSecurityEvent({ kind: 'sign_out', at: base });
+  assert.equal(stable.ok, true, 'ok defaults to true when the caller omits it');
+  assert.equal(stable.id, stableAgain.id, 'a missing id is derived, so two reads agree');
+
+  const rawLines = [
+    audit.securityAuditLine(first),
+    '',
+    'not json at all',
+    audit.securityAuditLine(stable),
+    audit.securityAuditLine(first),
+  ].join('\n');
+  const parsedLines = audit.parseSecurityAudit(rawLines);
+  assert.equal(parsedLines.length, 2, 'blank, broken and duplicate lines are dropped');
+  assert.equal(audit.parseSecurityAudit('').length, 0);
+
+  const ev = (kind, ok, minutes, extra = {}) =>
+    audit.normalizeSecurityEvent({
+      kind,
+      ok,
+      at: base + minutes * 60_000,
+      actorId: 'u_1',
+      actorName: 'Alice',
+      actorEmail: 'alice@example.com',
+      ip: '10.0.0.1',
+      ua: 'Chrome/120 · Windows',
+      detail: '',
+      ...extra,
+    });
+  const events = [
+    ev('sign_in', true, 0, { detail: 'password' }),
+    ev('sign_in', false, 5, { detail: 'Wrong email or password.', actorId: '', actorName: '', actorEmail: 'ghost@example.com' }),
+    ev('code', true, 10, { detail: 'purpose=signin · echo' }),
+    ev('password_change', true, 15, { detail: 'other sessions signed out' }),
+    ev('password_reset', false, 20, { detail: 'Code expired.' }),
+    ev('register', true, 25, { detail: 'role=owner' }),
+    ev('session_revoke', true, 30, { detail: 'revoked session abcd1234' }),
+    ev('sign_out', true, 35),
+  ];
+  assert.ok(events.every(Boolean), 'every fixture normalises');
+  const secNow = new Date(base + 40 * 60_000);
+
+  assert.equal(audit.filterSecurityAudit(events, {}, secNow).length, 8);
+  assert.equal(audit.filterSecurityAudit(events, { group: 'sign_in' }, secNow).length, 3, 'sign-out belongs to the sign-in group');
+  assert.equal(audit.filterSecurityAudit(events, { group: 'password' }, secNow).length, 2);
+  assert.equal(audit.filterSecurityAudit(events, { group: 'code' }, secNow).length, 1);
+  assert.equal(audit.filterSecurityAudit(events, { group: 'account' }, secNow).length, 2);
+  assert.equal(audit.filterSecurityAudit(events, { group: 'bogus' }, secNow).length, 8, 'an unknown group falls back to all');
+  assert.equal(audit.filterSecurityAudit(events, { failuresOnly: true }, secNow).length, 2);
+  assert.equal(audit.filterSecurityAudit(events, { actorId: 'u_1' }, secNow).length, 7);
+  assert.equal(audit.filterSecurityAudit(events, { needle: 'g***@example.com' }, secNow).length, 1, 'the masked address is searchable');
+  assert.equal(audit.filterSecurityAudit(events, { needle: 'Code expired' }, secNow).length, 1, 'the reason is searchable');
+  assert.equal(audit.filterSecurityAudit(events, { needle: '10.0.0.1' }, secNow).length, 8);
+  assert.equal(audit.filterSecurityAudit(events, { range: 'week' }, secNow).length, 8);
+  assert.equal(audit.filterSecurityAudit(events, { range: 'month' }, secNow).length, 8);
+  assert.equal(audit.filterSecurityAudit(events, { range: 'week' }, new Date(base + 60 * 86_400_000)).length, 0);
+  const newestThree = audit.filterSecurityAudit(events, { limit: 3 }, secNow);
+  assert.deepEqual(newestThree.map((row) => row.kind), ['sign_out', 'session_revoke', 'register'], 'newest first');
+  assert.equal(audit.filterSecurityAudit(events, { limit: 0 }, secNow).length, 8, 'a zero limit is not a request for nothing');
+
+  const secCapped = audit.capSecurityEvents(events, 3);
+  assert.equal(secCapped.length, 3);
+  assert.equal(secCapped[0].kind, 'sign_out');
+  assert.equal(audit.capSecurityEvents(events, 0).length, 0);
+  const body = audit.securityAuditFileBody(events, 3);
+  assert.equal(body.trim().split('\n').length, 3);
+  assert.match(body.split('\n')[0], /"kind":"register"/, 'the trimmed file is written oldest first');
+  assert.equal(audit.securityAuditFileBody([], 5), '');
+
+  assert.equal(audit.securityAuditVisibleTo(events[1], { id: 'u_1', role: 'member' }), false, 'an unattributed refusal stays with the owner');
+  assert.equal(audit.securityAuditVisibleTo(events[0], { id: 'u_1', role: 'member' }), true);
+  assert.equal(audit.securityAuditVisibleTo(events[1], { id: 'u_1', role: 'owner' }), true);
+  assert.equal(audit.securityAuditVisibleTo(events[0], null), false);
+  assert.equal(audit.visibleSecurityEvents(events, { id: 'u_1', role: 'member' }).length, 7);
+  assert.equal(audit.visibleSecurityEvents(events, { id: 'u_9', role: 'member' }).length, 0);
+  assert.equal(audit.visibleSecurityEvents(events, { id: 'u_9', role: 'owner' }).length, 8);
+
+  const secSummary = audit.securityAuditSummary(events, secNow);
+  assert.equal(secSummary.total, 8);
+  assert.equal(secSummary.today, 8);
+  assert.equal(secSummary.failures, 2);
+  assert.equal(secSummary.lastAt, new Date(base + 35 * 60_000).toISOString());
+  assert.deepEqual(secSummary.byGroup, { all: 8, sign_in: 3, password: 2, code: 1, account: 2 });
+  const old = audit.securityAuditSummary(events, new Date(base + 3 * 86_400_000));
+  assert.equal(old.total, 8, 'an old window does not drop the events, only the counters');
+  assert.equal(old.today, 0);
+  assert.equal(old.failures, 0);
+  assert.equal(audit.securityAuditSummary([], secNow).lastAt, null);
+  assert.equal(audit.securityAuditSummary([], secNow).byGroup.all, 0);
+
+  const markdown = audit.securityAuditMarkdown(events, { scope: 'all', filter: 'All · All time', secNow });
+  assert.ok(markdown.startsWith('# Aether security audit'));
+  assert.ok(markdown.includes('- scope: whole workspace'));
+  assert.ok(markdown.includes('- filter: All · All time'));
+  assert.ok(markdown.includes('- events: 8'));
+  assert.ok(markdown.includes('| when | event | result | who | ip | device | detail |'));
+  assert.ok(markdown.includes('| sign_in | refused |'), 'a refusal is labelled, not hidden');
+  assert.equal(markdown.trim().split('\n').filter((line) => line.startsWith('| 20')).length, 8);
+  const selfMarkdown = audit.securityAuditMarkdown(events, { scope: 'self', secNow });
+  assert.ok(selfMarkdown.includes('- scope: your events only'));
+  assert.ok(selfMarkdown.includes('- filter: all'));
+  const emptyMarkdown = audit.securityAuditMarkdown([], { secNow, filter: 'Codes' });
+  assert.ok(emptyMarkdown.includes('No events match this filter.'));
+  assert.ok(!emptyMarkdown.includes('| when |'));
+  const piped = audit.securityAuditMarkdown([ev('sign_in', true, 0, { detail: 'a | b' })], { secNow });
+  assert.ok(piped.includes('a \\| b'), 'a pipe in the detail cannot break the table');
+  assert.equal(audit.securityAuditFileName(new Date('2026-11-16T10:00:00.000Z')), 'aether-security-audit-2026-11-16.md');
+  console.log('PASS security audit: masking, JSONL parsing, filters, member scope, counters and the Markdown export');
+
   // The PR gate: which gates were asked for, what a run means, whether a red
   // tree gets parked, and what CI uploads. All decisions, no I/O.
   const gate = await loadTs(path.resolve('lib/ci/gate-report.ts'));

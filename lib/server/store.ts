@@ -12,6 +12,8 @@ import path from 'node:path';
  *     workspaces/<id>.json  per-account snapshots (WORKSPACE_MODE=personal)
  *     prefs/<id>.json       per-account preferences + inbox read state
  *     agent/<id>.json       per-account model configuration
+ *     security-audit.jsonl  append-only sign-in / code / password trail
+ *     workspace-backups/    periodic snapshots of the workspace file
  *
  * `LAB_DATA_DIR` moves the whole thing (the desktop build points it at the
  * user's app-data directory instead of the install folder).
@@ -41,6 +43,15 @@ export async function writeJson(name: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value), 'utf8');
+  await fs.rename(tmp, target);
+}
+
+/** The same atomic swap, for files that are not JSON (append-only logs). */
+export async function writeText(name: string, body: string): Promise<void> {
+  const target = filePath(name);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tmp, body, 'utf8');
   await fs.rename(tmp, target);
 }
 

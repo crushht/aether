@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  accountByEmail,
   changePassword,
   createSession,
   destroyOtherUserSessions,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/server/accounts';
 import { authState, clearedCookie, requireUser, sessionCookie, sessionTokenOf } from '@/lib/server-auth';
 import { clearRateLimit, rateLimit } from '@/lib/server/rate-limit';
+import { recordSecurityEvent } from '@/lib/server/security-audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,20 +38,55 @@ export async function POST(request: Request) {
   }
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
+  const ua = request.headers.get('user-agent') ?? '';
+  const byCode = typeof body.code === 'string' && body.code.trim().length > 0 && !body.password;
+  const method = byCode ? 'email code' : 'password';
   const limitKey = `login:${ip}`;
   const limit = rateLimit(limitKey);
   if (!limit.ok) {
+    await recordSecurityEvent({
+      kind: 'sign_in',
+      ok: false,
+      actorEmail: body.email,
+      ip,
+      ua,
+      detail: `rate limited · ${method}`,
+    });
     return NextResponse.json(
       { ok: false, error: 'Too many sign-in attempts. Try again in a minute.' },
       { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
     );
   }
-  const byCode = typeof body.code === 'string' && body.code.trim().length > 0 && !body.password;
   const result = byCode
     ? await loginWithEmailCode({ email: body.email, code: body.code, ip })
     : await login({ email: body.email, password: body.password, ip });
-  if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+  if (!result.ok) {
+    // the address may or may not exist here; attribute the refusal when it does
+    const known = await accountByEmail(body.email ?? '').catch(() => null);
+    await recordSecurityEvent({
+      kind: 'sign_in',
+      ok: false,
+      actorId: known?.id,
+      actorName: known?.name,
+      actorEmail: body.email,
+      ip,
+      ua,
+      detail: `${result.error} · ${method}`,
+    });
+    return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+  }
   clearRateLimit(limitKey);
+
+  await recordSecurityEvent({
+    kind: 'sign_in',
+    ok: true,
+    actorId: result.account.id,
+    actorName: result.account.name,
+    actorEmail: result.account.email,
+    ip,
+    ua,
+    detail: method,
+  });
 
   const token = await createSession(result.account.id, {
     ua: request.headers.get('user-agent') ?? '',
@@ -80,9 +117,31 @@ export async function PATCH(request: Request) {
 
   if (body.newPassword) {
     const changed = await changePassword(account.id, body.currentPassword ?? '', body.newPassword);
-    if (!changed.ok) return NextResponse.json({ ok: false, error: changed.error }, { status: 400 });
+    if (!changed.ok) {
+      await recordSecurityEvent({
+        kind: 'password_change',
+        ok: false,
+        actorId: account.id,
+        actorName: account.name,
+        actorEmail: account.email,
+        ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local',
+        ua: request.headers.get('user-agent') ?? '',
+        detail: changed.error,
+      });
+      return NextResponse.json({ ok: false, error: changed.error }, { status: 400 });
+    }
     // a new password invalidates every other browser; this one stays signed in
     await destroyOtherUserSessions(account.id, sessionTokenOf(request));
+    await recordSecurityEvent({
+      kind: 'password_change',
+      ok: true,
+      actorId: account.id,
+      actorName: account.name,
+      actorEmail: account.email,
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local',
+      ua: request.headers.get('user-agent') ?? '',
+      detail: 'other sessions signed out',
+    });
   }
 
   if (body.name !== undefined || body.handle !== undefined || body.color !== undefined) {
@@ -95,7 +154,20 @@ export async function PATCH(request: Request) {
 
 /** Sign out: revoke the session row and drop the cookie. */
 export async function DELETE(request: Request) {
+  const account = await requireUser(request);
   await destroySession(sessionTokenOf(request));
+  if (account) {
+    await recordSecurityEvent({
+      kind: 'sign_out',
+      ok: true,
+      actorId: account.id,
+      actorName: account.name,
+      actorEmail: account.email,
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local',
+      ua: request.headers.get('user-agent') ?? '',
+      detail: 'signed out this browser',
+    });
+  }
   const response = NextResponse.json({ ok: true });
   response.cookies.set(clearedCookie);
   return response;

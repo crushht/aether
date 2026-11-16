@@ -18,10 +18,12 @@ import { MailPanel } from '@/components/settings/mail';
 import { SearchPanel } from '@/components/settings/search';
 import { TemplatesPanel } from '@/components/settings/templates';
 import { NotificationsPanel } from '@/components/settings/notifications';
+import { SecurityPanel } from '@/components/settings/security-audit';
 import { WorkspaceTransfer } from '@/components/settings/workspace-transfer';
 
 const TABS = [
   { key: 'account', label: 'Account' },
+  { key: 'security', label: 'Security' },
   { key: 'preferences', label: 'Preferences' },
   { key: 'agents', label: 'Agents' },
   { key: 'connectors', label: 'Connectors' },
@@ -627,6 +629,7 @@ export default function SettingsPage() {
 
       <div className="min-w-0 flex-1">
         {active === 'account' ? <AccountPanel /> : null}
+        {active === 'security' ? <SecurityPanel /> : null}
         {active === 'agents' ? <AgentSettingsPanel /> : null}
         {active === 'connectors' ? <ConnectorsPanel /> : null}
         {active === 'search' ? <SearchPanel /> : null}

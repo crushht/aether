@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createSession, register } from '@/lib/server/accounts';
+import { accountByEmail, createSession, register } from '@/lib/server/accounts';
 import { authState, sessionCookie } from '@/lib/server-auth';
+import { recordSecurityEvent } from '@/lib/server/security-audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,32 @@ export async function POST(request: Request) {
   }
 
   const result = await register(body);
-  if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+  if (!result.ok) {
+    // the address may already belong to someone: attribute the refusal then
+    const known = await accountByEmail(body.email ?? '').catch(() => null);
+    await recordSecurityEvent({
+      kind: 'register',
+      ok: false,
+      actorId: known?.id,
+      actorName: known?.name,
+      actorEmail: body.email,
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local',
+      ua: request.headers.get('user-agent') ?? '',
+      detail: result.error,
+    });
+    return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+  }
+
+  await recordSecurityEvent({
+    kind: 'register',
+    ok: true,
+    actorId: result.account.id,
+    actorName: result.account.name,
+    actorEmail: result.account.email,
+    ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local',
+    ua: request.headers.get('user-agent') ?? '',
+    detail: `role=${result.account.role}`,
+  });
 
   const token = await createSession(result.account.id, {
     ua: request.headers.get('user-agent') ?? '',
