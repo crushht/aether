@@ -37,6 +37,17 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: eslint-config-next
         update-types: ['version-update:semver-major']
+      # eslint 10 breaks eslint-config-next 15's peer range; eslint majors here
+      # must move together with Next.
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      # these three are on majors the app was not built against yet
+      - dependency-name: lucide-react
+        update-types: ['version-update:semver-major']
+      - dependency-name: framer-motion
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
