@@ -35,11 +35,12 @@ jobs:
 
       - name: smoke — the auth endpoint answers and needs setup
         run: |
-          npx next start -p 4321 & sleep 6
-          curl -fsS http://127.0.0.1:4321/api/auth | tee /tmp/auth.json
+          npx next start -p 4399 & sleep 8
+          curl -fsS http://127.0.0.1:4399/api/auth | tee /tmp/auth.json
           grep -q '"mode":"accounts"' /tmp/auth.json
           grep -q '"needsSetup":true' /tmp/auth.json
           pkill -f "next start" || true
+          sleep 2
 
       - name: browser smoke — the three flows that break most often
         env:
@@ -47,12 +48,22 @@ jobs:
           LAB_DATA_DIR: ${{ github.workspace }}/.e2e-data
           AETHER_BACKUP_INTERVAL_MS: '0'
         run: |
+          # the dev server must own 4321: a stray `next start` would serve a
+          # production build that still requires an account
+          if curl -fsS http://127.0.0.1:4321/api/auth > /dev/null 2>&1; then
+            echo "port 4321 is already taken"; exit 1
+          fi
           npm run dev > /tmp/dev.log 2>&1 &
-          for i in $(seq 1 90); do
+          for i in $(seq 1 120); do
             if curl -fsS http://127.0.0.1:4321/api/auth > /dev/null 2>&1; then break; fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:4321/api/auth > /dev/null
+          # warm the routes so the first paint is not a cold compile
+          for route in /team/ENG /search /settings/data /inbox; do
+            curl -fsS "http://127.0.0.1:4321$route" > /dev/null || true
+          done
+          sleep 5
           node scripts/e2e.mjs
           node scripts/e2e-search-page.mjs
           node scripts/e2e-workspace-backups.mjs
