@@ -603,6 +603,151 @@ async function run() {
   console.log('PASS user agent labels: browser and OS, empty fallback');
   console.log('PASS issue history: undo, redo and cleared future');
   console.log('PASS JSON store: atomic writes and 20 serialized read-modify-write operations');
+  // Email sign-in: rules, message copy and SMTP framing.
+  const emailRules = await loadTs(path.resolve('lib/email-rules.ts'));
+  assert.equal(emailRules.normalizeEmail('  Foo@Bar.COM '), 'foo@bar.com');
+  assert.ok(emailRules.isEmailAddress('a@b.co'));
+  assert.ok(!emailRules.isEmailAddress('a@b'));
+  assert.ok(emailRules.isCodeShape('012345'));
+  assert.ok(!emailRules.isCodeShape('12345'));
+  assert.equal(emailRules.maskEmail('alice@qq.com'), 'a****@qq.com');
+  assert.equal(emailRules.resendInSeconds(1_000, 1_000), 60);
+  assert.equal(emailRules.resendInSeconds(1_000, 61_000), 0);
+  assert.ok(emailRules.codeIsLive({ expiresAt: 2_000, attempts: 0, usedAt: null }, 1_000));
+  assert.ok(!emailRules.codeIsLive({ expiresAt: 1_000, attempts: 0, usedAt: null }, 2_000));
+  assert.ok(!emailRules.codeIsLive({ expiresAt: 9_000, attempts: 5, usedAt: null }, 1_000));
+  assert.ok(!emailRules.codeIsLive({ expiresAt: 9_000, attempts: 0, usedAt: 5 }, 1_000));
+  const mailCopy = emailRules.codeMailCopy({ code: '123456', purpose: 'signin' });
+  assert.ok(mailCopy.subject.includes('登录') && mailCopy.text.includes('123456') && mailCopy.html.includes('123456'));
+  console.log('PASS email rules: address, code shape, masking, cooldown, live check and mail copy');
+
+  const smtp = await loadTs(path.resolve('lib/smtp.ts'));
+  const multiline = smtp.takeReply('250-first\r\n250 second\r\nrest');
+  assert.equal(multiline.reply.code, 250);
+  assert.deepEqual(multiline.reply.lines, ['first', 'second']);
+  assert.equal(multiline.rest, 'rest');
+  assert.equal(smtp.takeReply('250-partial\r\n'), null, 'an unfinished multiline reply waits');
+  assert.match(smtp.describeReply({ code: 535, lines: ['Authentication failed'] }), /535 Authentication failed/);
+  assert.ok(smtp.replyOk({ code: 235, lines: [] }, [235]));
+  assert.ok(!smtp.replyOk({ code: 535, lines: [] }, [235]));
+  assert.equal(smtp.dotStuff('a\r\n.\r\nb'), 'a\r\n..\r\nb');
+  assert.ok(smtp.encodeHeaderValue('Aether 登录验证码').startsWith('=?UTF-8?B?'));
+  const mime = smtp.buildMimeMessage({
+    from: { name: 'Aether', email: 'a@qq.com' },
+    to: [{ email: 'b@qq.com' }],
+    subject: '登录验证码 123456',
+    text: 'code 123456',
+    html: '<b>123456</b>',
+    messageId: 'x@y',
+    date: new Date('2026-01-02T03:04:05Z'),
+  });
+  assert.ok(mime.includes('Content-Type: multipart/alternative'), 'html mail is multipart');
+  assert.ok(mime.includes('Subject: =?UTF-8?B?'), 'a Chinese subject is RFC 2047 encoded');
+  assert.ok(mime.includes(Buffer.from('<b>123456</b>', 'utf8').toString('base64')), 'html part is base64');
+  const textOnly = smtp.buildMimeMessage({
+    from: { email: 'a@qq.com' },
+    to: [{ email: 'b@qq.com' }],
+    subject: 'plain',
+    text: 'hello',
+  });
+  assert.ok(textOnly.includes('Content-Type: text/plain; charset=UTF-8'));
+  console.log('PASS SMTP framing: multiline replies, dot stuffing, RFC 2047 subject and base64 body');
+
+  // Web search parsing (DuckDuckGo html + lite layouts).
+  const webSearch = await loadTs(path.resolve('lib/server/web-search.ts'), {
+    '@/lib/agent/guard': { safePageUrl: (value) => String(value) },
+  });
+  assert.equal(webSearch.decodeHtml('A &amp; B &#39;c&#x27;'), "A & B 'c'");
+  assert.equal(
+    webSearch.duckDuckGoHref('//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc&rut=1'),
+    'https://example.com/doc',
+  );
+  const ddg = webSearch.parseDuckDuckGo(
+    '<div class="result results_links"><div class="links_main result__body"><h2 class="result__title">' +
+      '<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc&amp;rut=x">Example <b>Doc</b></a>' +
+      '</h2><a class="result__snippet" href="x">A &amp; B <em>snippet</em></a></div></div>',
+    5,
+  );
+  assert.equal(ddg.length, 1);
+  assert.equal(ddg[0].url, 'https://example.com/doc');
+  assert.equal(ddg[0].title, 'Example Doc');
+  assert.equal(ddg[0].snippet, 'A & B snippet');
+  const lite = webSearch.parseDuckDuckGo(
+    "<a rel=\"nofollow\" class='result-link' href=\"https://lite.example/a\">Lite A</a></td><td class='result-snippet'>Snippet A</td>",
+    3,
+  );
+  assert.equal(lite[0]?.url, 'https://lite.example/a');
+  assert.equal(lite[0]?.snippet, 'Snippet A');
+  const heading = webSearch.parseHeadingResults(
+    '<h3 class="t"><a href="/link?url=abc">Baidu <em>Hit</em></a></h3><div class="c-abstract">A short summary</div>' +
+      '<h3><a href="https://other.example/x">Second</a></h3><p>Next summary</p>',
+    'https://www.baidu.com/s?wd=x',
+    5,
+  );
+  assert.equal(heading.length, 2);
+  assert.equal(heading[0].url, 'https://www.baidu.com/link?url=abc');
+  assert.equal(heading[0].title, 'Baidu Hit');
+  assert.ok(heading[0].snippet.startsWith('A short summary'));
+  assert.equal(
+    webSearch.trimSnippet('This is a reasonably long summary sentence that keeps going baidu.com https://x'),
+    'This is a reasonably long summary sentence that keeps going',
+  );
+  console.log('PASS web search: redirect unwrap, entity decoding, html/lite/heading layouts, snippet trim');
+
+  // Artifact triage: magic bytes, headers, entropy, strings and indicators.
+  const reverse = await loadTs(path.resolve('lib/agent/reverse.ts'));
+  assert.equal(reverse.sniffFormat(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])).id, 'png');
+  assert.equal(reverse.sniffFormat(Buffer.from('%PDF-1.7\n')).id, 'pdf');
+  assert.equal(reverse.sniffFormat(Buffer.from('hello world, plain text\n')).kind, 'text');
+  assert.equal(reverse.sniffFormat(Buffer.from('{"a":1}')).id, 'json');
+  assert.equal(reverse.shannonEntropy(Uint8Array.from([1, 1, 1, 1])), 0);
+
+  const peBytes = new Uint8Array(1024);
+  const peView = new DataView(peBytes.buffer);
+  const peOffset = 0x40;
+  peBytes.set([0x4d, 0x5a], 0);
+  peView.setUint32(0x3c, peOffset, true);
+  peBytes.set([0x50, 0x45, 0x00, 0x00], peOffset);
+  peView.setUint16(peOffset + 4, 0x8664, true); // x64
+  peView.setUint16(peOffset + 6, 1, true); // one section
+  peView.setUint16(peOffset + 20, 0xe0, true); // optional header size
+  peView.setUint16(peOffset + 22, 0x0022, true); // executable, not a dll
+  peView.setUint16(peOffset + 24 + 68, 3, true); // console subsystem
+  const sectionAt = peOffset + 24 + 0xe0;
+  peBytes.set(Buffer.from('.text\u0000\u0000\u0000', 'binary'), sectionAt);
+  peView.setUint32(sectionAt + 8, 0x100, true);
+  peView.setUint32(sectionAt + 16, 0x100, true);
+  peView.setUint32(sectionAt + 20, 0x400, true);
+  for (let index = 0; index < 256; index += 1) peBytes[0x400 + index] = (index * 37 + 11) & 0xff;
+  const pe = reverse.readPe(peBytes);
+  assert.equal(pe.machine, 'x64');
+  assert.equal(pe.subsystem, 'console');
+  assert.equal(pe.dll, false);
+  assert.equal(pe.sections.length, 1);
+  assert.ok(reverse.sniffFormat(peBytes).label.includes('PE'));
+
+  const indicators = reverse.findIndicators([
+    'GET https://evil.example/c2 HTTP/1.1',
+    'powershell -enc SQBFAFgA',
+    '192.168.1.20',
+    'VirtualAlloc',
+  ]);
+  assert.ok(indicators.some((item) => item.kind === 'url'));
+  assert.ok(indicators.some((item) => item.kind === 'command'));
+  assert.ok(indicators.some((item) => item.kind === 'ip'));
+  assert.ok(indicators.some((item) => item.kind === 'api'));
+  assert.deepEqual(reverse.extractStrings(Buffer.from('\u0000hello world\u0000ab\u0000'), 5), ['hello world']);
+
+  const gzip = Buffer.concat([Buffer.from([0x1f, 0x8b, 0x08, 0x00]), Buffer.alloc(40, 7)]);
+  const embedded = reverse.decodeEmbedded(`blob: ${gzip.toString('base64')}`);
+  assert.ok(embedded.some((entry) => entry.kind === 'base64' && entry.format.includes('GZIP')), 'base64 gzip is unwrapped');
+  const report = reverse.inspectArtifact(Buffer.from('powershell -enc AAAA https://evil.example/x'), 'sample.txt');
+  assert.ok(report.indicators.length >= 2);
+  assert.ok(report.hex[0].startsWith('00000000'));
+  const packed = reverse.inspectArtifact(new Uint8Array(requireCjs('node:crypto').randomBytes(4096)), 'packed.bin');
+  assert.ok(packed.entropy > 7 && packed.packed, 'high-entropy bytes read as packed');
+  console.log('PASS artifact triage: magic bytes, PE headers, entropy, strings, indicators and embedded payloads');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

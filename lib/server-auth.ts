@@ -7,6 +7,8 @@ import {
   signupCode,
   type Account,
 } from './server/accounts';
+import { emailVerificationRequired } from './server/email-codes';
+import { mailerStatus } from './server/mailer';
 
 /**
  * Session helpers shared by every route handler.
@@ -54,6 +56,7 @@ export const clearedCookie = { name: SESSION_COOKIE, value: '', path: '/', maxAg
 /** The shape `GET /api/auth` answers with — the client gate boots from this. */
 export async function authState(account: Account | null) {
   const users = await publicUsers();
+  const mail = mailerStatus();
   return {
     mode: authDisabled() ? 'local' : 'accounts',
     authenticated: Boolean(account),
@@ -74,5 +77,12 @@ export async function authState(account: Account | null) {
     signupCodeRequired: Boolean(signupCode()),
     // only an owner/admin may see the code; everyone else just learns it is required
     inviteCode: account && account.role === 'owner' ? signupCode() || null : null,
+    /** Whether the sign-in screen may offer "email me a code". */
+    emailCode: {
+      available: mail.ready,
+      signupRequired: emailVerificationRequired(),
+      host: mail.host,
+      from: mail.from,
+    },
   };
 }

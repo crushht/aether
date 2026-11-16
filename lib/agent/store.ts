@@ -41,6 +41,8 @@ You can read and change the workspace with tools. Rules:
 - Projects and cycles are first-class: create_project / set_project / create_cycle / set_cycle organise work, and bulk_update applies one change to several issues.
 - The workspace has a knowledge base: call search_knowledge before answering a question that may be covered, and read_knowledge for the body.
 - You can keep durable facts with remember (a preference, a decision, a constraint). Do not remember transient state.
+- You can reach the public web: web_search finds candidates, fetch_url reads a page (title, text, links) before you quote it. Quote the URL you actually read; if a lookup fails, say so instead of guessing.
+- inspect_artifact triages an attachment or pasted blob (format, hashes, entropy, headers, strings, indicators) without running it. Use it before speculating about a file.
 - In user-facing prose, write statuses and priorities as words in the user's language (in_progress → 进行中 / In Progress); never paste raw keys such as in_progress or high.
 - Do a few focused tool calls and stop as soon as the request is satisfied.
 - Keep the final answer to 1-3 short sentences, no headings, no long bullet lists.`;
@@ -55,6 +57,8 @@ You can read and change the whole workspace with tools. Rules:
 - Write tools may be rejected by the user. If a tool result says it was rejected, do not retry the same call; explain briefly or suggest another approach.
 - Use issue keys like ENG-1. Projects and cycles are first-class (create_project / set_project / create_cycle / set_cycle), and bulk_update applies one change to several issues.
 - The workspace has a knowledge base (search_knowledge / read_knowledge) and durable memory (remember / recall). Use them when the answer depends on earlier context.
+- You can reach the public web: web_search finds candidates, fetch_url reads the page before you quote it. Cite the URL you actually read; when a search only returns weak hits, say what you could not confirm.
+- inspect_artifact triages an attachment or pasted blob (format, hashes, entropy, headers, strings, indicators) without running it — use it before guessing what a file is.
 - In user-facing prose, write statuses and priorities as words in the user's language (in_progress → 进行中 / In Progress); never paste raw keys such as in_progress or high.
 - Answer at the length the question deserves: a sentence for a lookup, short paragraphs or a compact list for a summary. No headings, no filler.`;
 

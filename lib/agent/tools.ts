@@ -277,6 +277,46 @@ export const TOOLS: ToolSpec[] = [
       required: ['connector', 'method', 'path'],
     },
   },
+  {
+    name: 'web_search',
+    description:
+      'Search the public web and get titles, URLs and snippets back. Use it for version numbers, error messages, library docs and anything the workspace does not know.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'what to look for, 1-200 characters' },
+        limit: { type: 'number', description: 'how many results, 1-10, default 6' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'fetch_url',
+    description:
+      'Read one public page as title + text + outbound links. Follow a search hit with this before quoting it. Local and private addresses are refused.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'http(s) URL' },
+        maxChars: { type: 'number', description: 'clip the text, default 6000' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'inspect_artifact',
+    description:
+      'Static triage of a file or pasted blob: format, hashes, entropy (packed or not), PE/ELF/Mach-O headers, ZIP/APK listing, printable strings, URLs/IPs/commands and embedded base64 payloads. Reads an issue attachment by name, or raw base64/text. Never executes the sample.',
+    parameters: {
+      type: 'object',
+      properties: {
+        issue: { type: 'string', description: 'issue key whose attachment should be analysed' },
+        attachment: { type: 'string', description: 'attachment file name on that issue' },
+        base64: { type: 'string', description: 'raw base64 (or data: URL) when no attachment is given' },
+        text: { type: 'string', description: 'a text blob to analyse instead of bytes' },
+      },
+    },
+  },
 ];
 
 export async function runTool(name: string, rawArgs: Record<string, unknown>): Promise<ToolOutcome> {
@@ -687,6 +727,175 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       );
     }
 
+    case 'web_search': {
+      const query = String(rawArgs.query ?? '').trim();
+      if (!query) return fail('A query is required.');
+      const limit = typeof rawArgs.limit === 'number' ? Math.min(Math.max(1, rawArgs.limit), 10) : 6;
+      const response = await fetch('/api/agent/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, limit }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        results?: { title: string; url: string; snippet: string }[];
+        provider?: string;
+        error?: string;
+      };
+      if (!response.ok || !json.ok) return fail(json.error ?? `The search failed (${response.status}).`);
+      const hits = json.results ?? [];
+      if (!hits.length) return ok(`Nothing found for "${query}".`);
+      return ok(
+        [
+          ...hits.map(
+            (hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}${hit.snippet ? `\n   ${hit.snippet.slice(0, 240)}` : ''}`,
+          ),
+          '',
+          `Read one with fetch_url before quoting it. Source: ${json.provider ?? 'web search'}.`,
+        ].join('\n'),
+        `${hits.length} 条网页结果`,
+      );
+    }
+
+    case 'fetch_url': {
+      const url = String(rawArgs.url ?? '').trim();
+      if (!url) return fail('A URL is required.');
+      const maxChars = typeof rawArgs.maxChars === 'number' ? Math.min(Math.max(500, rawArgs.maxChars), 20_000) : 6_000;
+      const response = await fetch('/api/agent/fetch-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        page?: {
+          url: string;
+          title: string;
+          text: string;
+          chars: number;
+          truncated: boolean;
+          links?: { text: string; href: string }[];
+        };
+        error?: string;
+      };
+      if (!response.ok || !json.ok || !json.page) {
+        return fail(json.error ?? `That page could not be read (${response.status}).`);
+      }
+      const page = json.page;
+      const links = (page.links ?? [])
+        .slice(0, 12)
+        .map((link) => `- ${link.text} → ${link.href}`)
+        .join('\n');
+      return ok(
+        [
+          page.title,
+          page.url,
+          '',
+          page.text.slice(0, maxChars) + (page.text.length > maxChars ? '\n… (clipped)' : ''),
+          links ? `\nlinks:\n${links}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        `${page.title}（${page.chars} 字）`,
+      );
+    }
+
+    case 'inspect_artifact': {
+      const issue = rawArgs.issue ? findIssue(rawArgs.issue) : undefined;
+      let name = String(rawArgs.attachment ?? '').trim();
+      const payload: { base64?: string; text?: string } = {};
+      if (typeof rawArgs.base64 === 'string' && rawArgs.base64.trim()) {
+        payload.base64 = rawArgs.base64.trim();
+      } else if (typeof rawArgs.text === 'string' && rawArgs.text.length) {
+        payload.text = rawArgs.text;
+      } else if (issue) {
+        const files = issue.attachments ?? [];
+        const file = name
+          ? files.find((item) => item.name.toLowerCase() === name.toLowerCase()) ??
+            files.find((item) => item.name.toLowerCase().includes(name.toLowerCase()))
+          : files[0];
+        if (!file) return fail(`${issue.key} has no attachment ${name ? `named ${name}` : 'to inspect'}.`);
+        name = file.name;
+        if (file.dataUrl) payload.base64 = file.dataUrl;
+        else if (file.text) payload.text = file.text;
+        else return fail(`${file.name} carries no bytes in the workspace snapshot.`);
+      }
+      if (!payload.base64 && typeof payload.text !== 'string') {
+        return fail('Pass an issue attachment name, base64, or text to inspect.');
+      }
+
+      const response = await fetch('/api/agent/inspect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name || 'pasted-artifact', ...payload }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        hashes?: { sha256: string; sha1: string; md5: string };
+        report?: {
+          name: string;
+          size: number;
+          format: { label: string; id: string; detail?: string };
+          entropy: number;
+          packed: boolean;
+          pe?: {
+            machine: string;
+            timestamp: string;
+            subsystem: string;
+            sections: { name: string; rawSize: number; entropy: number }[];
+          };
+          elf?: { bits: number; endian: string; machine: string; entry: string };
+          macho?: { bits: number; cpu: string; filetype: string };
+          zip?: { name: string; size: number }[];
+          strings?: string[];
+          wide?: string[];
+          indicators?: { kind: string; value: string }[];
+          embedded?: { kind: string; bytes: number; format: string }[];
+          hex?: string[];
+          notes?: string[];
+        };
+        error?: string;
+      };
+      if (!response.ok || !json.ok || !json.report) return fail(json.error ?? `Analysis failed (${response.status}).`);
+      const report = json.report;
+      const structure: string[] = [];
+      if (report.pe) {
+        structure.push(
+          `PE ${report.pe.machine} · ${report.pe.subsystem} · built ${report.pe.timestamp} · ${report.pe.sections.length} section(s)`,
+          ...report.pe.sections
+            .slice(0, 10)
+            .map((section) => `  ${section.name || '(unnamed)'} raw=${section.rawSize}B entropy=${section.entropy}`),
+        );
+      }
+      if (report.elf) {
+        structure.push(`ELF ${report.elf.bits}-bit ${report.elf.endian} ${report.elf.machine} entry ${report.elf.entry}`);
+      }
+      if (report.macho) structure.push(`Mach-O ${report.macho.bits}-bit ${report.macho.cpu} ${report.macho.filetype}`);
+      if (report.zip?.length) {
+        structure.push('archive entries:', ...report.zip.slice(0, 15).map((entry) => `  ${entry.name} (${entry.size}B)`));
+      }
+      const indicators = (report.indicators ?? []).map((item) => `- ${item.kind}: ${item.value}`).join('\n');
+      const embedded = (report.embedded ?? []).map((item) => `- ${item.kind} blob → ${item.format} (${item.bytes}B)`).join('\n');
+      const strings = (report.strings ?? []).slice(0, 20).join('\n');
+
+      return ok(
+        [
+          `${report.name} · ${report.size} bytes · ${report.format.label}${report.format.detail ? ` · ${report.format.detail}` : ''}`,
+          json.hashes ? `sha256 ${json.hashes.sha256}\nmd5    ${json.hashes.md5}` : '',
+          `entropy ${report.entropy}${report.packed ? ' (high — packed, encrypted or compressed)' : ''}`,
+          structure.join('\n'),
+          (report.notes ?? []).map((note) => `! ${note}`).join('\n'),
+          embedded ? `embedded payloads:\n${embedded}` : '',
+          indicators ? `indicators:\n${indicators}` : '',
+          strings ? `strings (first 20):\n${strings}` : '',
+          (report.hex ?? []).length ? `hex:\n${(report.hex ?? []).join('\n')}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+        `${report.format.label} · entropy ${report.entropy}`,
+      );
+    }
+
     default:
       return fail(`Unknown tool ${name}.`);
   }
@@ -707,6 +916,9 @@ export const READ_ONLY_TOOLS = new Set([
   'read_knowledge',
   'list_workflows',
   'list_connectors',
+  'web_search',
+  'fetch_url',
+  'inspect_artifact',
 ]);
 
 /** GET/HEAD through a connector is a read; everything else needs approval. */

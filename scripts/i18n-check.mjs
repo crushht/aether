@@ -69,6 +69,9 @@ if (process.argv.includes('--hardcoded')) {
     path.join(root, 'lib', 'agent', 'types.ts'),
     path.join(root, 'lib', 'people.ts'),
     path.join(root, 'lib', 'session.ts'),
+    // outgoing mail is bilingual content, not a UI string: a code mail reads
+    // the same whatever language the browser is in
+    path.join(root, 'lib', 'email-rules.ts'),
     path.join(root, 'lib', 'server', 'accounts.ts'),
     path.join(root, 'lib', 'i18n.ts'),
     path.join(root, 'scripts'),

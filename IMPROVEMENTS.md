@@ -1,6 +1,18 @@
-# 改进总结（100 轮）
+# 改进总结（100 轮 + v0.4 能力线）
 
-对照 ChatGPT 与 Linear 的差距清单已逐项落地：共 **122 条**已完成条目（明细见 `NEXT.md` 的「已完成」），**73 个**浏览器/接口验收脚本（`scripts/e2e-*.mjs`）与 **28 项**纯函数回归（`scripts/regression.mjs`）。
+## v0.4（2026-11-16）：从「工作台 + agent」到「能自证的 agent」
+
+- **邮箱验证码体系**：零依赖 SMTP 客户端（`node:tls`）+ 六位码哈希存储 + 登录/注册/找回密码三条路径；
+  QQ 邮箱真实投递与 code 登录实测通过；规则（10 分钟、5 次、60s 冷却、每小时 6 封）由 `lib/email-rules.ts` 前后端共用。
+- **Agent 联网**：`web_search` 五引擎链式回退（DDG/Bing/搜狗/百度/360，两套解析器），`fetch_url` 带外链与逐跳重定向校验。
+- **Agent 静态逆向**：`inspect_artifact`（PE/ELF/Mach-O/ZIP-APK/熵/字符串/指示器/内嵌载荷/hexdump + sha256·sha1·md5）。
+- **自主循环**：`scripts/autopilot.mjs` — 队列 → headless agent → 门禁 → 本地提交（`--push` 才推送），锁与断点续跑。
+- 新增回归 4 组、浏览器验收 1 个（`scripts/e2e-email-code.mjs`，含 API 契约与登录页 UI）。
+- 对标矩阵与候选队列落在 `docs/11-产品差距清单.md`，循环说明在 `docs/12-自主改进循环.md`。
+
+---
+
+对照 ChatGPT 与 Linear 的差距清单已逐项落地：共 **122 条**已完成条目（明细见 `NEXT.md` 的「已完成」），**73 个**浏览器/接口验收脚本（`scripts/e2e-*.mjs`）与 **28 项**纯函数回归（`scripts/regression.mjs`）。v0.4 又加了 4 组回归与 1 个验收脚本。
 
 ## 验证命令
 

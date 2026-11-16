@@ -1,13 +1,15 @@
 'use client';
 
 import * as React from 'react';
-import { AlertCircle, ArrowRight, Check, KeyRound, Loader2, Lock, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, KeyRound, Loader2, Lock, Mail, Sparkles } from 'lucide-react';
 import { useSession } from '@/lib/session';
 import { inviteCodeFromSearch } from '@/lib/invite';
+import { resendInSeconds } from '@/lib/email-rules';
 import { useT } from '@/lib/use-t';
 import { cn } from '@/lib/utils';
 
-type Mode = 'signin' | 'signup';
+type Mode = 'signin' | 'signup' | 'reset';
+type Method = 'password' | 'code';
 
 const inputClass =
   'h-[42px] w-full rounded-r8 bg-[var(--bg-elevated)] px-3 text-[14px] text-t1 outline-none shadow-[inset_0_0_0_1px_var(--line-strong)] transition-shadow placeholder:text-t4 focus:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_62%,transparent),0_0_0_3px_var(--focus)]';
@@ -122,40 +124,146 @@ function AuthScreen() {
   const t = useT();
   const status = useSession((s) => s.status);
   const signupCodeRequired = useSession((s) => s.signupCodeRequired);
+  const mail = useSession((s) => s.emailCode);
   const signIn = useSession((s) => s.signIn);
+  const signInWithCode = useSession((s) => s.signInWithCode);
   const signUp = useSession((s) => s.signUp);
+  const requestEmailCode = useSession((s) => s.requestEmailCode);
+  const resetPassword = useSession((s) => s.resetPassword);
   const offline = useSession((s) => s.offline);
 
   const firstRun = status === 'setup';
   const [mode, setMode] = React.useState<Mode>(firstRun ? 'signup' : 'signin');
+  const [method, setMethod] = React.useState<Method>('password');
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [code, setCode] = React.useState(() =>
+  const [invite, setInvite] = React.useState(() =>
     typeof window === 'undefined' ? '' : inviteCodeFromSearch(window.location.search),
   );
+  const [emailCode, setEmailCode] = React.useState('');
+  const [sent, setSent] = React.useState<{ at: number; devCode?: string; delivered: boolean } | null>(null);
+  const [, forceTick] = React.useState(0);
+  const [notice, setNotice] = React.useState('');
   const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (!sent) return;
+    const timer = window.setInterval(() => forceTick((value) => value + 1), 1_000);
+    return () => window.clearInterval(timer);
+  }, [sent]);
+
   const [busy, setBusy] = React.useState(false);
+
+  /** Server errors carry their numbers already filled in; translate the pattern. */
+  const humanize = (message: string) => {
+    const left = /^That code is not right — (\d+) left\.$/.exec(message);
+    if (left) return t('That code is not right — {n} left.').replace('{n}', left[1]);
+    const again = /^Ask again in (\d+)s\.$/.exec(message);
+    if (again) return t('Ask again in {s}s.').replace('{s}', again[1]);
+    return t(message);
+  };
+
+  // a code belongs to one address: editing the email throws the old one away
+  const pickEmail = (value: string) => {
+    setEmail(value);
+    if (sent && value.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      setSent(null);
+      setEmailCode('');
+    }
+  };
+
+  const sendCode = async (purpose: 'signin' | 'signup' | 'reset') => {
+    if (!email.trim()) {
+      setError(t('Enter your email first.'));
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await requestEmailCode(email.trim(), purpose);
+    setBusy(false);
+    if (result.error) {
+      setError(humanize(result.error));
+      return;
+    }
+    setSent({ at: Date.now(), devCode: result.devCode, delivered: Boolean(result.delivered) });
+    setNotice(
+      result.delivered
+        ? t('Code sent to {email}').replace('{email}', email.trim())
+        : mail.available
+          ? t('Test mode: nothing was sent, the code is below.')
+          : t('Mail is not configured on this server — the code is shown below.'),
+    );
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError('');
-    const result =
-      mode === 'signup'
-        ? await signUp({ name, email, password, code: code || undefined })
-        : await signIn(email, password);
-    if (result) setError(t(result));
+    let result: string | null = null;
+    if (mode === 'reset') {
+      result = await resetPassword({ email, code: emailCode, password });
+    } else if (mode === 'signup') {
+      result = await signUp({
+        name,
+        email,
+        password,
+        code: invite || undefined,
+        emailCode: emailCode || undefined,
+      });
+    } else if (method === 'code') {
+      result = await signInWithCode(email, emailCode);
+    } else {
+      result = await signIn(email, password);
+    }
+    if (result) setError(humanize(result));
     setBusy(false);
   };
 
-  const heading = firstRun ? t('Create your workspace') : mode === 'signup' ? t('Create an account') : t('Welcome back');
+  const cooldown = sent ? resendInSeconds(sent.at) : 0;
+  const canMail = mail.available;
+  const codeField = (
+    <Field label={t('Verification code')} hint={t('Six digits from the email we sent you.')}>
+      <div className="flex gap-2">
+        <input
+          value={emailCode}
+          onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          placeholder="••••••"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          className={cn(inputClass, 'font-mono tracking-[0.28em]')}
+          data-auth-code
+        />
+        <button
+          type="button"
+          onClick={() => void sendCode(mode === 'reset' ? 'reset' : mode === 'signup' ? 'signup' : 'signin')}
+          disabled={busy || cooldown > 0}
+          className="h-[42px] shrink-0 rounded-r8 px-3 text-[12.5px] font-[510] text-t2 shadow-[inset_0_0_0_1px_var(--line-strong)] transition-colors hover:text-t1 disabled:opacity-55"
+          data-send-code
+        >
+          {cooldown > 0 ? t('Resend in {s}s').replace('{s}', String(cooldown)) : t('Send code')}
+        </button>
+      </div>
+    </Field>
+  );
+
+  const heading = firstRun
+    ? t('Create your workspace')
+    : mode === 'signup'
+      ? t('Create an account')
+      : mode === 'reset'
+        ? t('Reset your password')
+        : t('Welcome back');
   const sub = firstRun
     ? t('You are the first person here, so this account owns the workspace.')
     : mode === 'signup'
       ? t('Your account keeps its own model settings, preferences and inbox state.')
-      : t('Sign in to continue to your workspace.');
+      : mode === 'reset'
+        ? t('We email you a code, then you choose a new password.')
+        : t('Sign in to continue to your workspace.');
 
   return (
     <div className="grid min-h-dvh grid-cols-1 bg-base lg:grid-cols-[1.06fr_0.94fr]">
@@ -207,7 +315,7 @@ function AuthScreen() {
             {t('Keys stay on this server')}
           </span>
           <span className="flex-1" />
-          <span className="font-mono text-[10.5px]">v0.3</span>
+          <span className="font-mono text-[10.5px]">v0.4</span>
         </div>
       </section>
 
@@ -220,6 +328,34 @@ function AuthScreen() {
 
           <h2 className="text-[26px] font-[590] leading-[1.2] tracking-[-0.022em] text-t1">{heading}</h2>
           <p className="mt-1.5 text-[13.5px] leading-[1.6] text-t3">{sub}</p>
+
+          {mode !== 'signup' && canMail ? (
+            <div
+              className="mb-4 grid grid-cols-2 gap-1 rounded-r8 bg-[var(--bg-base)] p-1 text-[12.5px] font-[510]"
+              data-auth-method
+            >
+              {(['password', 'code'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setMethod(option);
+                    setError('');
+                    setNotice('');
+                  }}
+                  className={cn(
+                    'h-[28px] rounded-[6px] transition-colors',
+                    method === option
+                      ? 'bg-[var(--bg-elevated)] text-t1 shadow-[0_1px_2px_rgba(9,10,12,.08)]'
+                      : 'text-t3 hover:text-t2',
+                  )}
+                  data-method={option}
+                >
+                  {option === 'password' ? t('Password') : t('Email code')}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <form className="mt-7 flex flex-col gap-3.5" onSubmit={submit} data-auth-form>
             {mode === 'signup' ? (
@@ -237,9 +373,9 @@ function AuthScreen() {
 
             <Field label={t('Email')}>
               <input
-                autoFocus={mode === 'signin'}
+                autoFocus={mode !== 'signup' && !(mode === 'signin' && method === 'code')}
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => pickEmail(event.target.value)}
                 placeholder="you@company.com"
                 type="email"
                 autoComplete="email"
@@ -248,28 +384,52 @@ function AuthScreen() {
               />
             </Field>
 
-            <Field label={t('Password')}>
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                placeholder={mode === 'signup' ? t('At least 8 characters') : '••••••••'}
-                className={inputClass}
-              />
-            </Field>
+            {mode === 'reset' || (mode === 'signin' && method === 'code') || (mode === 'signup' && mail.signupRequired)
+              ? codeField
+              : null}
+
+            {!(mode === 'signin' && method === 'code') ? (
+              <Field
+                label={mode === 'reset' ? t('New password') : t('Password')}
+                hint={mode === 'reset' || mode === 'signup' ? t('At least 8 characters') : undefined}
+              >
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  autoComplete={mode === 'signup' || mode === 'reset' ? 'new-password' : 'current-password'}
+                  placeholder={mode === 'signup' || mode === 'reset' ? t('At least 8 characters') : '••••••••'}
+                  className={inputClass}
+                />
+              </Field>
+            ) : null}
 
             {mode === 'signup' && signupCodeRequired && !firstRun ? (
               <Field label={t('Invite code')} hint={t('This workspace requires the code from whoever runs it.')}>
                 <input
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
+                  value={invite}
+                  onChange={(event) => setInvite(event.target.value)}
                   placeholder="••••••"
                   type="password"
                   autoComplete="off"
                   className={inputClass}
                 />
               </Field>
+            ) : null}
+
+            {notice ? (
+              <p className="text-[12.5px] leading-[1.55] text-t3" data-auth-notice>
+                {notice}
+              </p>
+            ) : null}
+
+            {sent?.devCode ? (
+              <p
+                className="rounded-r8 bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[13px] tracking-[0.18em] text-t1 shadow-[inset_0_0_0_1px_var(--line)]"
+                data-dev-code
+              >
+                {t('Local code: {code}').replace('{code}', sent.devCode)}
+              </p>
             ) : null}
 
             {error ? (
@@ -292,25 +452,72 @@ function AuthScreen() {
               )}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-              {mode === 'signup' ? (firstRun ? t('Create workspace') : t('Create account')) : t('Sign in')}
+              {mode === 'reset'
+                ? t('Reset password')
+                : mode === 'signup'
+                  ? firstRun
+                    ? t('Create workspace')
+                    : t('Create account')
+                  : t('Sign in')}
               {!busy ? <ArrowRight size={14} strokeWidth={2.1} /> : null}
             </button>
           </form>
 
           {!firstRun ? (
-            <div className="mt-5 flex items-center gap-1.5 text-[13px] text-t3">
-              {mode === 'signup' ? t('Already have an account?') : t('New here?')}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode(mode === 'signup' ? 'signin' : 'signup');
-                  setError('');
-                }}
-                className="font-[510] text-t1 underline decoration-[var(--line-strong)] decoration-1 underline-offset-[3px] transition-colors hover:decoration-[var(--accent)]"
-              >
-                {mode === 'signup' ? t('Sign in') : t('Create an account')}
-              </button>
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-t3">
+              {mode === 'reset' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setError('');
+                    setNotice('');
+                  }}
+                  className="font-[510] text-t1 underline decoration-[var(--line-strong)] decoration-1 underline-offset-[3px] transition-colors hover:decoration-[var(--accent)]"
+                >
+                  {t('Back to sign in')}
+                </button>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1.5">
+                    {mode === 'signup' ? t('Already have an account?') : t('New here?')}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode(mode === 'signup' ? 'signin' : 'signup');
+                        setError('');
+                        setNotice('');
+                      }}
+                      className="font-[510] text-t1 underline decoration-[var(--line-strong)] decoration-1 underline-offset-[3px] transition-colors hover:decoration-[var(--accent)]"
+                    >
+                      {mode === 'signup' ? t('Sign in') : t('Create an account')}
+                    </button>
+                  </span>
+                  {mode === 'signin' && canMail ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('reset');
+                        setMethod('code');
+                        setError('');
+                        setNotice('');
+                      }}
+                      className="text-[12.5px] text-t3 underline decoration-[var(--line)] decoration-1 underline-offset-[3px] transition-colors hover:text-t2"
+                      data-forgot
+                    >
+                      {t('Forgot password?')}
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
+          ) : null}
+
+          {canMail ? (
+            <p className="mt-4 flex items-center gap-1.5 text-[11.5px] text-t4" data-mail-hint>
+              <Mail size={11} strokeWidth={1.9} />
+              {t('Codes are sent from {from} through {host}.').replace('{from}', mail.from || '—').replace('{host}', mail.host || '—')}
+            </p>
           ) : null}
 
           <div className="mt-9 border-t border-[var(--line-subtle)] pt-4">

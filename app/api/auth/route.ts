@@ -5,6 +5,7 @@ import {
   destroyOtherUserSessions,
   destroySession,
   login,
+  loginWithEmailCode,
   updateAccount,
 } from '@/lib/server/accounts';
 import { authState, clearedCookie, requireUser, sessionCookie, sessionTokenOf } from '@/lib/server-auth';
@@ -21,11 +22,15 @@ export async function GET(request: Request) {
   return NextResponse.json(await authState(account));
 }
 
-/** Sign in with email + password. */
+/**
+ * Sign in. Two ways in, one route:
+ *   `{ email, password }`       — the password
+ *   `{ email, code }`           — the six digits mailed by /api/auth/email-code
+ */
 export async function POST(request: Request) {
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; code?: string };
   try {
-    body = (await request.json()) as { email?: string; password?: string };
+    body = (await request.json()) as { email?: string; password?: string; code?: string };
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid JSON body.' }, { status: 400 });
   }
@@ -39,7 +44,10 @@ export async function POST(request: Request) {
       { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
     );
   }
-  const result = await login({ email: body.email, password: body.password, ip });
+  const byCode = typeof body.code === 'string' && body.code.trim().length > 0 && !body.password;
+  const result = byCode
+    ? await loginWithEmailCode({ email: body.email, code: body.code, ip })
+    : await login({ email: body.email, password: body.password, ip });
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
   clearRateLimit(limitKey);
 

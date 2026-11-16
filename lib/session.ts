@@ -12,6 +12,21 @@ export interface SessionPayload {
   users?: PublicUser[];
   needsSetup?: boolean;
   signupCodeRequired?: boolean;
+  emailCode?: { available?: boolean; signupRequired?: boolean; host?: string; from?: string };
+}
+
+export interface EmailCodeState {
+  available: boolean;
+  signupRequired: boolean;
+  host: string;
+  from: string;
+}
+
+export interface CodeSendResult {
+  error?: string;
+  /** present when no relay is configured (or a test asked for the echo) */
+  devCode?: string;
+  delivered?: boolean;
 }
 
 interface SessionState {
@@ -21,12 +36,23 @@ interface SessionState {
   /** everyone in the workspace (public projection) */
   users: PublicUser[];
   signupCodeRequired: boolean;
+  /** whether the sign-in screen can offer "email me a code" */
+  emailCode: EmailCodeState;
   mode: 'shared' | 'personal';
   /** set when the auth endpoint is unreachable — the app still opens locally */
   offline: boolean;
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (input: { name: string; email: string; password: string; code?: string }) => Promise<string | null>;
+  signInWithCode: (email: string, code: string) => Promise<string | null>;
+  signUp: (input: {
+    name: string;
+    email: string;
+    password: string;
+    code?: string;
+    emailCode?: string;
+  }) => Promise<string | null>;
+  requestEmailCode: (email: string, purpose: 'signin' | 'signup' | 'reset') => Promise<CodeSendResult>;
+  resetPassword: (input: { email: string; code: string; password: string }) => Promise<string | null>;
   signOut: () => Promise<void>;
   updateProfile: (patch: {
     name?: string;
@@ -67,6 +93,12 @@ function apply(payload: SessionPayload) {
     users,
     mode: (payload.mode === 'local' ? 'personal' : 'shared') as 'shared' | 'personal',
     signupCodeRequired: Boolean(payload.signupCodeRequired),
+    emailCode: {
+      available: Boolean(payload.emailCode?.available),
+      signupRequired: Boolean(payload.emailCode?.signupRequired),
+      host: payload.emailCode?.host ?? '',
+      from: payload.emailCode?.from ?? '',
+    } satisfies EmailCodeState,
     offline: false,
   };
 }
@@ -76,6 +108,7 @@ export const useSession = create<SessionState>((set, get) => ({
   user: null,
   users: [],
   signupCodeRequired: false,
+  emailCode: { available: false, signupRequired: false, host: '', from: '' },
   mode: 'shared',
   offline: false,
 
@@ -116,6 +149,62 @@ export const useSession = create<SessionState>((set, get) => ({
       });
       const payload = (await response.json().catch(() => ({}))) as SessionPayload & { error?: string };
       if (!response.ok) return payload.error ?? `Sign in failed (${response.status}).`;
+      if (payload.user) accountStorage(payload.user.id);
+      set(apply(payload));
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  },
+
+  signInWithCode: async (email, code) => {
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as SessionPayload & { error?: string };
+      if (!response.ok) return payload.error ?? `Sign in failed (${response.status}).`;
+      if (payload.user) accountStorage(payload.user.id);
+      set(apply(payload));
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  },
+
+  requestEmailCode: async (email, purpose) => {
+    try {
+      const response = await fetch('/api/auth/email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, purpose }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        devCode?: string;
+        delivered?: boolean;
+      };
+      if (!response.ok || !payload.ok) {
+        return { error: payload.error ?? `Could not send the code (${response.status}).` };
+      }
+      return { devCode: payload.devCode, delivered: Boolean(payload.delivered) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+
+  resetPassword: async (input) => {
+    try {
+      const response = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      const payload = (await response.json().catch(() => ({}))) as SessionPayload & { error?: string };
+      if (!response.ok) return payload.error ?? `Could not reset the password (${response.status}).`;
       if (payload.user) accountStorage(payload.user.id);
       set(apply(payload));
       return null;

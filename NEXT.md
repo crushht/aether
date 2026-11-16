@@ -1,137 +1,35 @@
 # NEXT — Aether 的持续待办
 
-> 规则（给自己的脚本）：
-> 1. 每轮先运行 `node scripts/next.mjs`，拿到第一条未完成项。
-> 2. 做完后运行 `node scripts/next.mjs --done "<该项原文>"` 勾选，并在「已完成」里记一行（含验证方式）。
-> 3. 立即继续下一条；只有全部完成、且无法从 README / docs 的已知边界里补出新项时才停。
-> 4. 每项都必须 `npx tsc --noEmit` 与 `npm run build` 通过；涉及交互的用真实 dev 或本地网关验证。
-> 5. 不改坏既有能力；发现回归先修回归，再继续待办。
+> 规则（给自己的自动循环）：
+> 1. 每条先看现状再动手：`node scripts/next.mjs` 取第一条，`node scripts/autopilot.mjs --status` 看队列与门禁。
+> 2. 做完用 `node scripts/next.mjs --done "<该项原文>"` 勾选，并在「已完成」顶部记一行（含验证方式）。
+> 3. 立即继续下一条；队列空了就 `node scripts/autopilot.mjs --seed` 从 `docs/11-产品差距清单.md` 取候选。
+> 4. 门禁：`npx tsc --noEmit` + `node scripts/regression.mjs` 必须过；`npm run build` 在提交前跑一次。
+> 5. 不改坏既有能力；发现回归先修回归。纯逻辑进可测模块并补 regression 用例，界面改动用真实 dev 验收。
+> 6. 外部资产阻塞的条目不进「待办」，写在「阻塞」里；能拆成可验证子任务的就拆。
 
 ## 待办
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- [ ] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
+- [ ] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
+- [ ] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
+- [ ] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
+- [ ] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
+- [ ] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
+- [ ] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
+
+## 阻塞（需要外部资产，不进入轮转队列）
 
 - [ ] P0 恢复 exe 图标与版本信息（需开发者模式或 CI 打包）
+- [ ] P2 多工作区切换：按 workspaceId 分区数据（需要服务端数据模型与路由改造）
+- [ ] P2 自动安装与代码签名（需要发布源与证书）
+
+## 已完成
+
+- 2026-11-16 邮箱验证码登录/注册：SMTP 客户端（node:tls，AUTH LOGIN/PLAIN、STARTTLS）、六位码哈希存储（10 分钟、5 次、60s 冷却、每小时 6 封）、登录/注册/找回密码三条路由；真实 QQ 邮箱投递 + code 登录实测通过；`lib/email-rules.ts`、`lib/smtp.ts` 回归 2 组。
+- 2026-11-16 Agent 联网：`web_search`（多引擎链：DDG→Bing→Sogou→百度→360，两套解析器）与 `fetch_url`（正文 + 外链 + 逐跳校验的重定向）；`/api/agent/web-search`、`fetch-page` 实测 cn.bing.com 命中 3 条、linear.app 抽取 40 条链接。
+- 2026-11-16 Agent 逆向：`inspect_artifact` + `/api/agent/inspect`：magic/格式、PE/ELF/Mach-O 头、ZIP/APK 目录、熵、ASCII/UTF-16 字符串、URL/IP/命令/API 指示器、内嵌 base64/hex 载荷、hexdump；回归 1 组覆盖合成 PE。
+- 2026-11-16 自驱循环：`scripts/autopilot.mjs`（待办队列 + 缺口清单 seeding + 门禁 + 本地提交 + 可选 push + 锁与续跑）、`docs/11-产品差距清单.md`、`docs/12-自主改进循环.md`。
 - [x] P2 桌面托盘与深链：最小化到托盘、aether:// 打开议题
 - [x] P2 备份恢复 diff 预览：恢复前看到差异
 - [x] P2 Agent 用量汇总：今日 token/调用统计

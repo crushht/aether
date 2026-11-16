@@ -1,11 +1,18 @@
 import { safePageUrl } from '@/lib/agent/guard';
 
+export interface PageLink {
+  text: string;
+  href: string;
+}
+
 export interface PageResult {
   url: string;
   title: string;
   text: string;
   chars: number;
   truncated: boolean;
+  /** Outbound links the agent can follow, resolved against the page URL. */
+  links: PageLink[];
 }
 
 const MAX_CHARS = 120_000;
@@ -55,20 +62,69 @@ export function htmlToText(html: string) {
 }
 
 /**
- * Fetch one public page and reduce it to title + text. Private and link-local
- * addresses are refused by `safePageUrl`, so a pasted URL cannot probe the host.
+ * Outbound links with readable labels, in page order. Enough for an agent to
+ * choose the next page; anchors, mail links and duplicates are dropped.
+ */
+export function extractLinks(html: string, baseUrl: string, limit = 40): PageLink[] {
+  const out: PageLink[] = [];
+  const seen = new Set<string>();
+  const pattern = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) && out.length < limit) {
+    const raw = decodeEntities(match[1]).trim();
+    if (!raw || /^(?:javascript|mailto|tel|data):/i.test(raw)) continue;
+    let href: string;
+    try {
+      href = new URL(raw, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    if (!/^https?:/i.test(href) || seen.has(href)) continue;
+    const text = decodeEntities(match[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!text) continue;
+    seen.add(href);
+    out.push({ text, href });
+  }
+  return out;
+}
+
+const UA = 'Mozilla/5.0 (compatible; Aether/0.3; +https://example.invalid)';
+
+/**
+ * Fetch with redirects followed by hand, so every hop passes `safePageUrl`.
+ * A public URL that redirects to 127.0.0.1 must not become a host probe.
+ */
+async function fetchFollowing(rawUrl: string, hops = 4): Promise<{ response: Response; finalUrl: string }> {
+  let current = safePageUrl(rawUrl);
+  for (let hop = 0; hop < hops; hop += 1) {
+    const response = await fetch(current, {
+      headers: {
+        'User-Agent': UA,
+        Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) return { response, finalUrl: current };
+      const next = new URL(location, current).toString();
+      current = safePageUrl(next);
+      continue;
+    }
+    return { response, finalUrl: current };
+  }
+  throw new Error('That link redirected too many times.');
+}
+
+/**
+ * Fetch one public page and reduce it to title + text + links. Private and
+ * link-local addresses are refused by `safePageUrl`, so a pasted URL cannot
+ * probe the host.
  */
 export async function readPage(rawUrl: string): Promise<PageResult> {
-  const url = safePageUrl(rawUrl);
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; Aether/0.3; +https://example.invalid)',
-      Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-    },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(20_000),
-  });
+  const { response, finalUrl: url } = await fetchFollowing(rawUrl);
 
   if (!response.ok) throw new Error(`The page answered ${response.status}.`);
   const contentType = response.headers.get('content-type') ?? '';
@@ -89,5 +145,6 @@ export async function readPage(rawUrl: string): Promise<PageResult> {
     text: sliced,
     chars: sliced.length,
     truncated,
+    links: isHtml ? extractLinks(raw, url) : [],
   };
 }

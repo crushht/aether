@@ -69,12 +69,21 @@ same tools, approvals and audit trail as you:
 - **Multiple providers**: OpenAI, DeepSeek, OpenRouter, Moonshot, Zhipu GLM, Ollama / LM Studio, any self-hosted endpoint
 - **Per-scene routing**: workspace chat, issue panel, project and workflows each pick their own provider and model
 - **Tool calls**: read/write issues, projects, knowledge, memory and workflows, with one readable line per step
+- **Web access**: `web_search` across a chain of engines (DuckDuckGo → Bing → Sogou → Baidu → 360, or a pinned SearXNG via `AETHER_SEARCH_URL`) and `fetch_url` for page text plus outbound links, with every redirect hop re-validated and private addresses refused
+- **Static triage**: `inspect_artifact` on an attachment or pasted blob — format and magic bytes, PE / ELF / Mach-O headers, ZIP / APK listings, entropy (packed or not), ASCII and UTF-16 strings, URL / IP / command / API indicators, embedded base64/hex payloads and a hex dump; read-only, never executes the sample
 - **Approvals**: confirm each write, or "always allow" a tool (stored per account in this browser)
 - **Memory and retrieval**: scoped memories plus keyword retrieval; add an embedding model for hybrid reranking
 - **Workflows**: scheduled or manual runs, traceable history, cancellation, export
 - **Usage**: today / last 7 days of tokens, steps, tool calls and failures (local only)
 
 <p align="center"><img src="docs/checks/202-aether-agents.png" width="720" alt="Agent settings" /></p>
+
+### Accounts and sign-in
+- **Two ways in**: email + password, or an **emailed six-digit code** (10 minutes, 5 attempts, 60-second resend cooldown, 6 per hour per address)
+- **Verified sign-up**: with a mail relay configured, new accounts must confirm the mailbox; invite codes still apply
+- **Password reset**: by code, and a reset revokes every other session for that account
+- **Bring your own SMTP**: `AETHER_SMTP_*` in `.env.local` (QQ Mail wants the 16-character authorization code; Gmail, 163 and any STARTTLS relay work too); with no relay the app stays in local password mode
+- Chinese HTML + plain-text code mail built in; sending uses `node:tls` with no mail library
 
 ### Collaboration and reliability
 - Accounts, invite codes, member roles (the last owner is protected), session list with UA / IP and "sign out other devices"
@@ -162,7 +171,7 @@ replace → broadcast over SSE", so multiple tabs never clobber each other.
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint, 0 problems
-npm test             # 32 pure-function regression checks
+npm test             # pure-function regression (mail rules, SMTP framing, search parsing, artifact triage)
 npm run i18n         # missing keys + hardcoded CJK scan (0 missing / 0 hardcoded)
 npm run build        # production build
 npm run csp:check    # summarise CSP reports (AETHER_CSP_ENFORCE=1 to enforce)
@@ -175,9 +184,26 @@ $env:AUTH_DISABLED='1'; $env:LAB_DATA_DIR='.e2e-data'; npm run dev
 node scripts/e2e.mjs            # plus 70+ e2e-*.mjs suites
 ```
 
+To exercise the emailed code without reading the mailbox: `$env:AETHER_EMAIL_ECHO='1'` — the endpoint also returns `devCode` (local only).
+
+## Autopilot
+
+`scripts/autopilot.mjs` is the delivery loop: read the first item in `NEXT.md` → hand it to a headless agent →
+run the gates (typecheck / regression / build) → commit locally only when every gate is green; `--push` pushes.
+
+```bash
+npm run autopilot:status                 # queue, candidates, last gates, git state
+npm run autopilot                        # one round
+node scripts/autopilot.mjs --rounds 3
+node scripts/autopilot.mjs --until-dry
+node scripts/autopilot.mjs --check       # gates only (what CI should run)
+node scripts/autopilot.mjs --seed        # promote candidates from docs/11-产品差距清单.md
+```
+
 ## Docs
 
 - [Connecting a model](docs/04-接入模型.md) · [Deployment](docs/05-部署.md) · [Desktop app](docs/06-桌面应用.md) · [Product architecture](docs/07-Aether产品架构.md)
+- [Gap list vs Linear / ChatGPT](docs/11-产品差距清单.md) · [Autopilot loop](docs/12-自主改进循环.md)
 - Changes: [CHANGELOG.md](CHANGELOG.md) · Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Keyboard
@@ -198,6 +224,8 @@ node scripts/e2e.mjs            # plus 70+ e2e-*.mjs suites
 - [ ] Auto-update and code signing (release host + certificate)
 - [ ] Server-side search index (knowledge search is in-memory today)
 - [ ] Sharded storage (large workspaces rewrite too much)
+- [ ] SMTP settings page (configure the relay in the UI instead of `.env.local`)
+- [ ] Agent tool result cards (search hits and triage reports expandable in the transcript)
 
 What has already landed is recorded in [IMPROVEMENTS.md](IMPROVEMENTS.md).
 

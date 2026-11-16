@@ -10,6 +10,23 @@
 - 服务端搜索索引
 - 数据层分片
 
+## [0.4.0] — 2026-11-16
+
+### Added
+- **邮箱验证码登录 / 注册 / 找回密码**：零依赖 SMTP 客户端（`node:tls`，AUTH LOGIN / PLAIN、隐式 TLS 与 STARTTLS），六位码以加盐 SHA-256 存储，10 分钟有效、5 次尝试、60 秒重发冷却、每地址每小时 6 封；`/api/auth/email-code`、`/api/auth/password`、`POST /api/auth` 支持 `{ email, code }`
+- **SMTP 配置**：`AETHER_SMTP_*`（任意中继；QQ 邮箱用授权码，默认 smtp.qq.com:465），`.env.example` 说明全部变量；未配置时退回纯本地密码模式
+- **登录页**：密码 / 邮箱验证码切换、发送倒计时、本地模式开发码提示、找回密码入口、中英双语文案
+- **Agent 联网**：`web_search`（DuckDuckGo → Bing → 搜狗 → 百度 → 360 链式回退，两套解析器，`AETHER_SEARCH_URL` 可指向 SearXNG）与 `fetch_url`（正文 + 外链 + 逐跳校验重定向，私网拒绝）；新增 `/api/agent/web-search`
+- **Agent 静态逆向**：`inspect_artifact` + `/api/agent/inspect`（格式 / PE / ELF / Mach-O / ZIP-APK 目录 / 熵 / 字符串 / 指示器 / 内嵌 base64-hex 载荷 / hexdump，附 sha256·sha1·md5）
+- **自主改进循环**：`scripts/autopilot.mjs`（待办队列 + 缺口清单 seeding + 门禁 + 本地提交 + 可选 push + 进程锁 + 断点续跑），`npm run autopilot*` 五个别名
+- `docs/11-产品差距清单.md`（对标 Linear / ChatGPT 的差距矩阵与候选队列）、`docs/12-自主改进循环.md`
+- 回归新增 4 组：邮件规则、SMTP 组帧、搜索解析、静态逆向
+
+### Changed
+- `lib/server/secrets.ts`：对称密钥与 AES-GCM 加解密从 `accounts.ts` 抽出，供 SMTP 凭据复用（`accounts.ts` 继续导出，调用方无需改）
+- `lib/server/fetch-page.ts`：返回 `links`，重定向改为逐跳校验
+- 版本号 0.3.1 → 0.4.0
+
 ## [0.3.1] — 2026-11-16
 
 ### Fixed

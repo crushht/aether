@@ -1,4 +1,5 @@
-// The loop driver: print the next unfinished item from NEXT.md, or tick one off.
+// The queue driver: print the next unfinished item from NEXT.md, or tick one off.
+// Only the `## 待办` section counts — "阻塞" holds items that need outside assets.
 //   node scripts/next.mjs
 //   node scripts/next.mjs --done "Issue List 首屏骨架"
 //   node scripts/next.mjs --add "some new item"
@@ -11,6 +12,22 @@ let text = readFileSync(file, 'utf8');
 const args = process.argv.slice(2);
 const doneIndex = args.indexOf('--done');
 const addIndex = args.indexOf('--add');
+
+/** Unchecked items inside `## 待办` only. */
+function pendingItems(source) {
+  const items = [];
+  let inQueue = false;
+  for (const line of source.split('\n')) {
+    if (/^##\s/.test(line)) {
+      inQueue = /^##\s*待办/.test(line);
+      continue;
+    }
+    if (!inQueue) continue;
+    const match = /^- \[ \] (.+)$/.exec(line.trim());
+    if (match) items.push(match[1]);
+  }
+  return items;
+}
 
 if (doneIndex >= 0) {
   const target = (args[doneIndex + 1] ?? '').trim();
@@ -41,18 +58,13 @@ if (addIndex >= 0) {
   process.exit(0);
 }
 
-const head = text.split('## 已完成')[0];
-const next = head
-  .split('\n')
-  .map((line) => line.trim())
-  .find((line) => line.startsWith('- [ ]'));
+const items = pendingItems(text);
+const next = items[0];
 
 if (!next) {
   console.log('ALL_DONE');
   process.exit(2);
 }
 
-console.log(next.replace(/^- \[ \]\s*/, ''));
-
-const remaining = head.split('\n').filter((line) => line.trim().startsWith('- [ ]')).length;
-console.error(`(${remaining} remaining)`);
+console.log(next);
+console.error(`(${items.length} remaining)`);

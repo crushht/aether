@@ -63,12 +63,21 @@ Aether 反过来——**Agent 是主线**，它和工作区共用同一套工具
 - **多 Provider**：OpenAI、DeepSeek、OpenRouter、Moonshot、智谱 GLM、Ollama / LM Studio、任意自建端点
 - **按场景路由**：工作区聊天、议题面板、项目、工作流各自选 Provider 与模型
 - **工具调用**：读写议题 / 项目 / 知识 / 记忆 / 工作流，一步一句可读的说明
+- **联网**：`web_search` 多引擎链（DuckDuckGo → Bing → 搜狗 → 百度 → 360，可用 `AETHER_SEARCH_URL` 指向 SearXNG）+ `fetch_url` 读正文与外链（重定向逐跳校验，私网地址拒绝）
+- **静态逆向**：`inspect_artifact` 对附件或粘贴内容做分诊 —— 格式与 magic、PE / ELF / Mach-O 头、ZIP / APK 目录、熵（是否加壳）、ASCII 与 UTF-16 字符串、URL / IP / 命令 / API 指示器、内嵌 base64/hex 载荷、hexdump；只读，不执行样本
 - **审批**：写工具逐次确认，或「总是允许」（按账号保存在本浏览器）
 - **记忆与知识**：作用域记忆 + 关键词检索，配了向量模型就自动混合重排
 - **工作流**：定时或手动运行，运行记录可回溯、可取消、可导出
 - **用量**：今日 / 近 7 天的 token、步骤、工具调用与失败数（仅本浏览器统计）
 
 <p align="center"><img src="docs/checks/202-aether-agents.png" width="720" alt="Agent 设置" /></p>
+
+### 账号与登录
+- **两种登录**：邮箱 + 密码；或**邮箱验证码**（六位数字，10 分钟有效、5 次尝试、60 秒重发冷却、每小时最多 6 封）
+- **注册即验证**：配好 SMTP 中继后，新账号必须先通过邮件验证码，邀请码照旧生效
+- **找回密码**：验证码重置，重置即吊销该账号其它设备会话
+- **自带 SMTP**：`.env.local` 填 `AETHER_SMTP_*`（QQ 邮箱用 16 位授权码；也支持 Gmail / 163 / 任意中继、STARTTLS），不配则退回纯本地模式
+- 中文验证码邮件模板（HTML + 纯文本双版本），发送走 `node:tls`，不引入任何邮件库
 
 ### 协作与可靠性
 - 账号、邀请码、成员角色（最后一位 owner 受保护）、会话列表（UA / IP / 撤销其它设备）
@@ -156,7 +165,7 @@ scripts/        回归、e2e（CDP）、打包、图标生成、i18n 与 CSP 检
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint，0 problems
-npm test             # 32 项纯函数回归
+npm test             # 纯函数回归（含邮件规则 / SMTP 组帧 / 搜索解析 / 静态逆向）
 npm run i18n         # 缺键 + 硬编码中文扫描（0 missing / 0 hardcoded）
 npm run build        # 生产构建
 npm run csp:check    # CSP 违规汇总（AETHER_CSP_ENFORCE=1 可切强制）
@@ -169,9 +178,28 @@ $env:AUTH_DISABLED='1'; $env:LAB_DATA_DIR='.e2e-data'; npm run dev
 node scripts/e2e.mjs            # 另有 70+ 个 e2e-*.mjs 覆盖各功能
 ```
 
+想发真实验证码又不想读邮箱：`$env:AETHER_EMAIL_ECHO='1'`，接口会把 `devCode` 一起返回（仅本地）。
+
+## 自主改进循环
+
+`scripts/autopilot.mjs` 是这个仓库的「持续交付司机」：读 `NEXT.md` 的待办 → 交给 headless agent →
+跑门禁（typecheck / regression / build）→ 门禁全绿才本地提交，`--push` 才推送。
+
+```bash
+npm run autopilot:status                 # 队列 / 候选 / 上次门禁 / git 状态
+npm run autopilot                        # 跑一轮
+node scripts/autopilot.mjs --rounds 3    # 连跑三轮
+node scripts/autopilot.mjs --until-dry   # 跑到队列为空
+node scripts/autopilot.mjs --check       # 只跑门禁（CI 用这个）
+node scripts/autopilot.mjs --seed        # 从 docs/11-产品差距清单.md 取候选进队列
+```
+
+细节与安全边界见 [docs/12-自主改进循环.md](docs/12-自主改进循环.md)。
+
 ## 文档
 
 - [接入模型](docs/04-接入模型.md) · [部署](docs/05-部署.md) · [桌面应用](docs/06-桌面应用.md) · [产品架构](docs/07-Aether产品架构.md)
+- [产品差距清单（对标 Linear / ChatGPT）](docs/11-产品差距清单.md) · [自主改进循环](docs/12-自主改进循环.md)
 - 变更记录：[CHANGELOG.md](CHANGELOG.md)；贡献方式：[CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 键盘
@@ -192,6 +220,8 @@ node scripts/e2e.mjs            # 另有 70+ 个 e2e-*.mjs 覆盖各功能
 - [ ] 自动更新与代码签名（发布源 + 证书）
 - [ ] 服务端搜索索引（知识库目前是内存检索）
 - [ ] 数据层分片（大工作区写入放大）
+- [ ] 邮件服务设置页（SMTP 可视化配置，替代 `.env.local`）
+- [ ] Agent 工具结果卡片化（搜索结果 / 逆向报告在对话流内展开）
 
 已经落地的改动记在 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 

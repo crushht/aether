@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * WORKSPACE_PASSWORD) is set.
  */
 export async function POST(request: Request) {
-  let body: { name?: string; email?: string; password?: string; code?: string };
+  let body: { name?: string; email?: string; password?: string; code?: string; emailCode?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {

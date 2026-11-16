@@ -1,14 +1,16 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-} from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import type { PublicUser } from '@/lib/types';
-import { DATA_DIR, filePath, readJson, withLock, writeJson } from './store';
+import { isEmailAddress, normalizeEmail as normalizeMail } from '@/lib/email-rules';
+import { filePath, readJson, withLock, writeJson } from './store';
+import { decryptSecret, encryptSecret } from './secrets';
+import { consumeEmailCode, emailVerificationRequired } from './email-codes';
+
+/**
+ * Accounts, sessions and per-account settings. The symmetric key lives in
+ * `./secrets`; everything else about an account is in this file.
+ */
+export { decryptSecret, encryptSecret }; // kept exported: routes and the agent proxy import them from here
 
 export interface Account {
   id: string;
@@ -35,7 +37,6 @@ type Sessions = Record<string, SessionRecord>;
 
 const USERS_FILE = 'users.json';
 const SESSIONS_FILE = 'sessions.json';
-const SECRET_FILE = 'secret.key';
 
 export const SESSION_COOKIE = 'lab_session';
 export const SESSION_MAX_AGE = 30 * 86_400;
@@ -54,57 +55,6 @@ const COLORS = [
   '#4EC9B0',
   '#E0654F',
 ];
-
-/* ------------------------------------------------------------------ secret */
-
-let secretPromise: Promise<string> | null = null;
-
-/** One random secret per data directory; used to encrypt stored provider keys. */
-function secret(): Promise<string> {
-  if (!secretPromise) {
-    secretPromise = (async () => {
-      try {
-        const raw = (await fs.readFile(filePath(SECRET_FILE), 'utf8')).trim();
-        if (raw.length >= 32) return raw;
-      } catch {
-        /* first run */
-      }
-      const created = randomBytes(32).toString('hex');
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      await fs.writeFile(filePath(SECRET_FILE), created, { encoding: 'utf8', mode: 0o600 });
-      return created;
-    })();
-  }
-  return secretPromise;
-}
-
-function key(): Promise<Buffer> {
-  return secret().then((value) => createHash('sha256').update(value).digest());
-}
-
-/** AES-256-GCM, output `v1.iv.tag.ciphertext` (base64url parts). */
-export async function encryptSecret(plain: string): Promise<string> {
-  if (!plain) return '';
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', await key(), iv);
-  const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join(
-    '.',
-  );
-}
-
-export async function decryptSecret(blob: string): Promise<string> {
-  if (!blob) return '';
-  const [version, ivPart, tagPart, bodyPart] = blob.split('.');
-  if (version !== 'v1' || !ivPart || !tagPart || !bodyPart) return '';
-  try {
-    const decipher = createDecipheriv('aes-256-gcm', await key(), Buffer.from(ivPart, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
-    return Buffer.concat([decipher.update(Buffer.from(bodyPart, 'base64url')), decipher.final()]).toString('utf8');
-  } catch {
-    return '';
-  }
-}
 
 /* ---------------------------------------------------------------- password */
 
@@ -157,7 +107,7 @@ export async function publicUsers(): Promise<PublicUser[]> {
 }
 
 function normalizeEmail(value: string): string {
-  return value.trim().toLowerCase();
+  return normalizeMail(value);
 }
 
 function normalizeHandle(value: string): string {
@@ -186,7 +136,10 @@ export interface RegisterInput {
   name?: string;
   email?: string;
   password?: string;
+  /** the instance invite code (SIGNUP_CODE) */
   code?: string;
+  /** the six digits mailed to the address, when verification is on */
+  emailCode?: string;
 }
 
 /** The instance invite code: either SIGNUP_CODE or the legacy WORKSPACE_PASSWORD. */
@@ -237,13 +190,22 @@ export async function register(input: RegisterInput): Promise<Success | Failure>
   const password = input.password ?? '';
 
   if (name.length < 1) return { ok: false, status: 400, error: 'Tell us your name.' };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, status: 400, error: 'That email is not valid.' };
+  if (!isEmailAddress(email)) return { ok: false, status: 400, error: 'That email is not valid.' };
   if (password.length < 8) return { ok: false, status: 400, error: 'Use at least 8 characters.' };
 
   const code = signupCode();
   const accounts = await listAccounts();
   if (accounts.length > 0 && code && (input.code ?? '') !== code) {
     return { ok: false, status: 403, error: 'Wrong invite code.' };
+  }
+  if (accounts.some((account) => account.email === email)) {
+    return { ok: false, status: 409, error: 'That email already has an account.' };
+  }
+
+  // a mailbox is only proven when a mailer can actually deliver the code
+  if (emailVerificationRequired()) {
+    const consumed = await consumeEmailCode({ email, purpose: 'signup', code: input.emailCode ?? '' });
+    if (!consumed.ok) return { ok: false, status: consumed.status, error: consumed.error };
   }
 
   return withLock(USERS_FILE, async () => {
@@ -285,6 +247,69 @@ export async function login(input: { email?: string; password?: string; ip?: str
 
   attempts.delete(scope);
   return { ok: true, account };
+}
+
+export async function accountByEmail(email: string): Promise<Account | null> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  return (await listAccounts()).find((row) => row.email === normalized) ?? null;
+}
+
+/** Sign in with the six digits mailed to the address — no password needed. */
+export async function loginWithEmailCode(input: {
+  email?: string;
+  code?: string;
+  ip?: string;
+}): Promise<Success | Failure> {
+  const email = normalizeEmail(input.email ?? '');
+  const scope = `code|${email}|${input.ip ?? 'local'}`;
+  if (tooManyAttempts(scope)) {
+    return { ok: false, status: 429, error: 'Too many attempts. Wait a few minutes.' };
+  }
+  if (!isEmailAddress(email)) return { ok: false, status: 400, error: 'That email is not valid.' };
+
+  const consumed = await consumeEmailCode({ email, purpose: 'signin', code: input.code ?? '' });
+  if (!consumed.ok) {
+    countAttempt(scope);
+    return { ok: false, status: consumed.status, error: consumed.error };
+  }
+
+  const account = await accountByEmail(email);
+  // a code is only ever sent to an address that already has an account
+  if (!account) return { ok: false, status: 401, error: 'That email has no account here.' };
+
+  attempts.delete(scope);
+  return { ok: true, account };
+}
+
+/** Set a new password with a mailed code. The caller mints the next session. */
+export async function resetPasswordWithCode(input: {
+  email?: string;
+  code?: string;
+  password?: string;
+}): Promise<{ ok: true } | Failure> {
+  const email = normalizeEmail(input.email ?? '');
+  const password = input.password ?? '';
+  if (!isEmailAddress(email)) return { ok: false, status: 400, error: 'That email is not valid.' };
+  if (password.length < 8) return { ok: false, status: 400, error: 'Use at least 8 characters.' };
+
+  const consumed = await consumeEmailCode({ email, purpose: 'reset', code: input.code ?? '' });
+  if (!consumed.ok) return { ok: false, status: consumed.status, error: consumed.error };
+
+  const account = await accountByEmail(email);
+  if (!account) return { ok: false, status: 404, error: 'That email has no account here.' };
+
+  await withLock(USERS_FILE, async () => {
+    const current = await listAccounts();
+    await writeJson(
+      USERS_FILE,
+      current.map((row) => (row.id === account.id ? { ...row, password: hashPassword(password) } : row)),
+    );
+  });
+  // a reset is also a "sign out everywhere": the old password may be in a
+  // mailbox or a leaked dump
+  await destroyUserSessions(account.id);
+  return { ok: true };
 }
 
 /* ---------------------------------------------------------------- sessions */
