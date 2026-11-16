@@ -1379,6 +1379,101 @@ async function run() {
   assert.equal(gate.normalizeReport({ planned: ['typecheck'] }).summary.ok, false, 'a missing result is not a pass');
   console.log('PASS gate report: gate parsing, skipped vs failed, stash policy, artifact JSON and the CI summary');
 
+  // Cycle burndown: daily remaining points (estimate, or 1 when unestimated),
+  // canceled scope removed, and the SVG geometry derived from those points.
+  const cyclesLib = await loadTs(path.resolve('lib/cycles.ts'));
+  const DAY_MS = 86_400_000;
+  const isoOf = (ms) => new Date(ms).toISOString();
+  const START = Date.UTC(2026, 0, 1);
+  const cycle = {
+    id: 'cyc-bd',
+    name: 'Burndown',
+    number: 1,
+    startsAt: isoOf(START),
+    endsAt: isoOf(START + 10 * DAY_MS),
+    progress: 0,
+  };
+  const scoped = (id, estimate, status, createdOffset, closedOffset) => ({
+    id,
+    key: id,
+    cycleId: 'cyc-bd',
+    status,
+    estimate,
+    createdAt: isoOf(START + createdOffset),
+    updatedAt: isoOf(START + closedOffset),
+  });
+  const scopedIssues = [
+    scoped('a', 3, 'done', -2 * DAY_MS, 1 * DAY_MS),
+    scoped('b', 2, 'in_progress', -3600_000, -3600_000),
+    scoped('c', null, 'todo', -3600_000, -3600_000),
+    scoped('d', 4, 'canceled', -3600_000, 3 * DAY_MS),
+    scoped('e', 5, 'todo', 3 * DAY_MS + 3600_000, 3 * DAY_MS + 3600_000),
+    scoped('f', 7, 'done', -1 * DAY_MS, 6 * DAY_MS),
+  ];
+  assert.equal(cyclesLib.issuePoints({ estimate: 3 }), 3);
+  assert.equal(cyclesLib.issuePoints({ estimate: 0 }), 1, 'a zero estimate still takes a point');
+  assert.equal(cyclesLib.issuePoints({ estimate: -2 }), 1);
+  assert.equal(cyclesLib.issuePoints({ estimate: null }), 1);
+  assert.equal(cyclesLib.issuePoints({ estimate: Number.NaN }), 1);
+  assert.equal(cyclesLib.issuePoints({ estimate: '3' }), 1, 'a string estimate is not a number');
+
+  const midCycle = START + 4 * DAY_MS + 3600_000;
+  const daily = cyclesLib.burndown(scopedIssues, cycle, midCycle);
+  assert.deepEqual(daily.map((point) => point.day), [0, 1, 2, 3, 4]);
+  assert.deepEqual(daily.map((point) => point.scope), [17, 17, 17, 17, 22], 'scope grows when work is added mid-cycle');
+  assert.deepEqual(daily.map((point) => point.done), [0, 3, 3, 3, 3], 'a completion only counts once it happened');
+  assert.deepEqual(daily.map((point) => point.canceled), [0, 0, 0, 4, 4], 'canceled work leaves the scope');
+  assert.deepEqual(daily.map((point) => point.remaining), [17, 14, 14, 10, 15]);
+  assert.equal(daily[4].at, START + 4 * DAY_MS, 'buckets are anchored on the cycle start');
+
+  const before = cyclesLib.burndown(scopedIssues, cycle, START - 5 * DAY_MS);
+  assert.equal(before.length, 1, 'an upcoming cycle draws a single opening point');
+  assert.equal(before[0].at, START);
+  assert.equal(before[0].remaining, 17);
+  const after = cyclesLib.burndown(scopedIssues, cycle, START + 40 * DAY_MS);
+  assert.equal(after.length, 11, 'a finished cycle draws every day of its window');
+  assert.equal(after.at(-1).at, START + 10 * DAY_MS, 'the last point lands on the closing day');
+  assert.equal(after.at(-1).remaining, 8, 'both completions burn, the canceled block leaves the scope');
+  assert.equal(cyclesLib.burndown(scopedIssues, { ...cycle, startsAt: 'nope' }, midCycle).length, 0);
+  assert.equal(cyclesLib.burndown(scopedIssues, { ...cycle, endsAt: isoOf(START - DAY_MS) }, midCycle).length, 0);
+  assert.equal(cyclesLib.burndown(scopedIssues, { ...cycle, id: 'other' }, midCycle)[0].scope, 0, 'another cycle owns nothing here');
+  const inverted = cyclesLib.burndown(
+    [{ ...scoped('x', 3, 'done', 5 * DAY_MS, 1 * DAY_MS) }],
+    cycle,
+    START + 6 * DAY_MS,
+  );
+  assert.ok(inverted.every((point) => point.remaining >= 0), 'remaining never goes negative');
+
+  const geometry = cyclesLib.burndownGeometry(cycle, daily);
+  assert.equal(geometry.max, 22);
+  assert.equal(geometry.cutoff, 288, 'the real line stops on the last computed day');
+  assert.deepEqual(geometry.grid, [12, 82, 152]);
+  assert.equal(geometry.idealPath, 'M0,12 L720,152', 'the guide runs from today scope to zero at the close');
+  const polyline = geometry.polyline.split(' ');
+  assert.equal(polyline.length, 5);
+  const xs = polyline.map((pair) => Number(pair.split(',')[0]));
+  [0, 72, 144, 216, 288].forEach((expected, index) =>
+    assert.ok(Math.abs(xs[index] - expected) < 0.2, `x ${index} should be ~${expected}, got ${xs[index]}`),
+  );
+  const ys = [43.8, 62.9, 62.9, 88.4, 56.5];
+  polyline.forEach((pair, index) => {
+    const value = Number(pair.split(',')[1]);
+    assert.ok(Math.abs(value - ys[index]) < 0.15, `y ${index} should be ~${ys[index]}, got ${value}`);
+  });
+  assert.ok(geometry.path.startsWith('M0,43.8 L'), `unexpected path start: ${geometry.path.slice(0, 24)}`);
+  assert.ok(geometry.area.endsWith(' L288,152 L0,152 Z'), 'the fill closes against the baseline');
+  assert.ok(!geometry.polyline.includes('NaN') && !geometry.area.includes('NaN'));
+  const emptyGeometry = cyclesLib.burndownGeometry(cycle, []);
+  assert.equal(emptyGeometry.path, '');
+  assert.equal(emptyGeometry.max, 1);
+  assert.deepEqual(emptyGeometry.grid, []);
+  const flatGeometry = cyclesLib.burndownGeometry(cycle, [
+    { at: START, day: 0, scope: 0, done: 0, canceled: 0, remaining: 0 },
+  ]);
+  assert.equal(flatGeometry.max, 1, 'an empty cycle still has a usable scale');
+  assert.equal(flatGeometry.polyline, '0,152');
+  console.log('PASS cycle burndown: daily remaining points, unestimated work, canceled scope and SVG geometry');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

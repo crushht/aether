@@ -13,7 +13,7 @@
 
 - [x] P1 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` 覆盖发送倒计时、错误码递减、注册校验、找回密码四条路径（`AETHER_EMAIL_ECHO=1` 下取码）
 - [x] P2 审计流覆盖认证事件：登录成功/失败、验证码发送、密码重置写入工作区审计（作者、IP、UA）
-- [ ] P2 Cycle 燃尽图：按 cycle 起止日期计算每日剩余点，SVG 折线，纯函数 + 回归
+- [x] P2 Cycle 燃尽图：按 cycle 起止日期计算每日剩余点，SVG 折线，纯函数 + 回归
 - [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
 - [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
@@ -29,6 +29,8 @@
 - [ ] P2 自动安装与代码签名（需要发布源与证书）
 
 ## 已完成
+
+- 2026-11-16 Cycle 燃尽图：`lib/cycles.ts` 新增三个纯函数 —— `issuePoints`（有估点用估点，没有按 1 点，0/负数/字符串/NaN 都回退 1）、`burndown`（以 cycle `startsAt` 为锚每 24h 一天，逐日累计 scope / done / canceled，`remaining = scope − done − canceled` 且不小于 0；`now` 钳进窗口，所以未来的周期只画开局一个点、结束的周期画满整窗；非法日期返回空数组）、`burndownGeometry`（`max`/`cutoff`/`grid`/`polyline`/`path`/`area`/`idealPath`，坐标固定 1 位小数、空点集不产生 NaN）。理想线从「当前 scope」拉到收盘归零，中途加范围也不会指着过期总量。周期页新增「燃尽图」卡片（剩余折线 + 理想虚线 + 今日截止线 + 起止/中点日期 + 「N 个未估点按 1 点计」提示），原「进度曲线」（burn-up）保留不动；i18n 新增 4 键。验证：regression 新增 1 组（日桶/scope 中途增长/completion 只在其发生后计入/canceled 退出 scope/窗口前后钳制/非法日期/剩余不为负/几何坐标与网格/空点集与空周期，共 46 条断言，`PASS cycle burndown`）；`scripts/e2e-cycle-burndown.mjs` 在真实 dev（AUTH_DISABLED=1，端口 4321）注入一个 6 天前开始、14 天的周期（10 点 scope、3 点 done、4 点取消、1 个未估点）：断言 7 个日点、`data-burndown-remaining=3`、折线是 `<polyline>` 且末点比首点低、理想线为虚线 `M…L…`、填充闭合、无 NaN、未估点提示可见、空周期为平线、原 burn-up 仍在 → `PASS browser: cycle burndown renders daily remaining points as an SVG polyline and keeps the burn-up chart`；截图 `docs/checks/267-cycle-burndown.png`；`docs/11` 的「周期报表」一行同步改为「燃尽图已具备，缺吞吐趋势图」。tsc + regression + lint(0 problems) + i18n(0 missing / 0 hardcoded) + build 通过。
 
 - 2026-11-16 差距清单补勾：`--seed` 从 `docs/11` 搬回来三条，其中「邮件验证码浏览器验收」与「审计流覆盖认证事件」早已交付（`scripts/e2e-email-code.mjs` 两段通过；审计见 `b650ea8` 与 `02577a1`），直接勾掉；只剩 Cycle 燃尽图是真待办。顺手在 `docs/11` 写明「完成即勾，否则会被重新搬进队列」。
 - 2026-11-16 评论附件刷新丢失（判定为测试时序，不是产品 bug）：`scripts/e2e-attachments.mjs` 在 500ms 防抖落盘之前就 `goto` 刷新，附件还在内存里没 PUT 出去；加一段「轮询 `/api/workspace` 直到附件与评论文档真的进了快照」再刷新。证据：`git stash` 掉改动跑基线超时失败（exit 1），恢复后 `PASS browser: issue and comment attachments upload, persist, and delete`。

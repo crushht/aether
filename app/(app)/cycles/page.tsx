@@ -6,7 +6,7 @@ import { useData } from '@/lib/store/data';
 import { useView } from '@/lib/store/view';
 import { useUI } from '@/lib/store/ui';
 import { useT } from '@/lib/use-t';
-import { burnUp, cycleIssues, cyclePhase, cycleStats } from '@/lib/cycles';
+import { burnUp, burndown, burndownGeometry, cycleIssues, cyclePhase, cycleStats } from '@/lib/cycles';
 import { STATUSES, type Cycle } from '@/lib/types';
 import { cn, dateRange, shortDate } from '@/lib/utils';
 import { Avatar, Button } from '@/components/ui/primitives';
@@ -268,6 +268,10 @@ function CycleDetail({
         ))}
       </div>
 
+      <div className="mt-3">
+        <BurndownCard cycle={cycle} issues={issues} now={now} />
+      </div>
+
       <div className="mt-3 rounded-r8 bg-[var(--bg-hover)] p-3">
         <div className="flex items-center justify-between">
           <span className="text-[13px] font-[510] text-t2">{t('Burn-up')}</span>
@@ -326,6 +330,104 @@ function CycleDetail({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function BurndownCard({
+  cycle,
+  issues,
+  now,
+}: {
+  cycle: Cycle;
+  issues: ReturnType<typeof useData.getState>['issues'];
+  now: number;
+}) {
+  const t = useT();
+  const points = React.useMemo(() => burndown(issues, cycle, now), [issues, cycle, now]);
+  const chart = React.useMemo(() => burndownGeometry(cycle, points), [cycle, points]);
+  const remaining = points[points.length - 1]?.remaining ?? 0;
+  const unestimated = points.length
+    ? cycleIssues(issues, cycle.id).filter((issue) => !(typeof issue.estimate === 'number' && issue.estimate > 0)).length
+    : 0;
+  const start = +new Date(cycle.startsAt);
+  const end = +new Date(cycle.endsAt);
+
+  return (
+    <div className="rounded-r8 bg-[var(--bg-hover)] p-3" data-cycle-burndown={cycle.id}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] font-[510] text-t2">{t('Burndown')}</span>
+        <span className="tnum text-[12.5px] text-t4" data-burndown-remaining={remaining}>
+          {t('{n} point(s) left', { n: remaining })}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-t4">
+        <span className="flex items-center gap-1.5">
+          <span className="h-[2px] w-4 rounded-full bg-accent" />
+          {t('Remaining')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0 w-4 border-t border-dashed border-[var(--text-4)]" />
+          {t('Ideal')}
+        </span>
+        {unestimated ? <span>{t('{n} without an estimate count as 1 point', { n: unestimated })}</span> : null}
+      </div>
+      <svg
+        viewBox={`0 0 ${chart.width} ${chart.height}`}
+        className="mt-2 w-full"
+        role="img"
+        aria-label={`${cycle.name} burndown`}
+        data-burndown-points={points.length}
+      >
+        {chart.grid.map((at, index) => (
+          <line key={index} x1={0} x2={chart.width} y1={at} y2={at} stroke="var(--line-subtle)" strokeWidth={1} />
+        ))}
+        {chart.area ? <path d={chart.area} fill="var(--accent)" fillOpacity={0.08} data-burndown-area /> : null}
+        {chart.idealPath ? (
+          <path
+            d={chart.idealPath}
+            fill="none"
+            stroke="var(--text-4)"
+            strokeWidth={1.2}
+            strokeDasharray="4 4"
+            data-burndown-ideal
+          />
+        ) : null}
+        {chart.polyline ? (
+          <polyline
+            points={chart.polyline}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth={1.8}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            data-burndown-line
+          />
+        ) : null}
+        {points.length ? (
+          <line
+            x1={chart.cutoff}
+            x2={chart.cutoff}
+            y1={chart.top}
+            y2={chart.height - chart.bottom}
+            stroke="var(--line-strong)"
+            strokeWidth={1}
+            strokeDasharray="2 3"
+          />
+        ) : null}
+        <text x={0} y={chart.height - 8} fontSize={10} fill="var(--text-4)">
+          {shortDate(new Date(start).toISOString())}
+        </text>
+        <text x={chart.width / 2} y={chart.height - 8} fontSize={10} fill="var(--text-4)" textAnchor="middle">
+          {shortDate(new Date(start + (end - start) / 2).toISOString())}
+        </text>
+        <text x={chart.width} y={chart.height - 8} fontSize={10} fill="var(--text-4)" textAnchor="end">
+          {shortDate(new Date(end).toISOString())}
+        </text>
+        <text x={0} y={chart.top - 2} fontSize={10} fill="var(--text-4)">
+          {chart.max}
+        </text>
+      </svg>
     </div>
   );
 }
