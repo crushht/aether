@@ -653,6 +653,91 @@ async function run() {
   assert.ok(textOnly.includes('Content-Type: text/plain; charset=UTF-8'));
   console.log('PASS SMTP framing: multiline replies, dot stuffing, RFC 2047 subject and base64 body');
 
+  // Mail relay settings: presets, normalising, validation and precedence.
+  const mail = await loadTs(path.resolve('lib/mail-settings.ts'), { '@/lib/email-rules': emailRules });
+  assert.equal(mail.normalizeHost('  smtp://SMTP.QQ.com:465/  '), 'smtp.qq.com', 'a pasted URL becomes a host');
+  assert.equal(mail.normalizeHost('127.0.0.1:2525'), '127.0.0.1');
+  assert.equal(mail.normalizeHost('localhost'), 'localhost');
+  assert.equal(mail.mailPresetFor(' Me@QQ.com ').host, 'smtp.qq.com');
+  assert.equal(mail.mailPresetFor('a@gmail.com').port, 465);
+  const outlookPreset = mail.mailPresetFor('a@outlook.com');
+  assert.equal(outlookPreset.port, 587);
+  assert.equal(outlookPreset.secure, false);
+  assert.equal(outlookPreset.starttls, true);
+  assert.equal(mail.mailPresetFor('a@example.com'), null);
+
+  const qqDefaults = mail.normalizeMailSettings({ user: 'me@qq.com' });
+  assert.equal(qqDefaults.host, 'smtp.qq.com', 'the QQ account fills the host');
+  assert.equal(qqDefaults.port, 465);
+  assert.equal(qqDefaults.secure, true);
+  assert.equal(qqDefaults.starttls, false);
+  assert.equal(qqDefaults.from, 'me@qq.com', 'the sender defaults to the account');
+  assert.equal(qqDefaults.fromName, 'Aether');
+  assert.equal(qqDefaults.enabled, true);
+
+  const blank = mail.validateMailDraft({ enabled: true, user: 'me@qq.com', host: 'smtp.qq.com' });
+  assert.equal(blank.ok, false, 'an enabled relay needs a password');
+  assert.ok(blank.errors.pass, 'the missing field is named');
+  const complete = mail.validateMailDraft({
+    enabled: true,
+    user: 'me@qq.com',
+    host: 'smtp.qq.com',
+    port: '465',
+    pass: 'abcdefghijklmnop',
+  });
+  assert.equal(complete.ok, true, `a complete QQ relay is valid: ${JSON.stringify(complete.errors)}`);
+  assert.deepEqual(complete.notices, [], 'a 16-character QQ code needs no notice');
+  const shortCode = mail.validateMailDraft({ user: 'me@qq.com', pass: 'oops' });
+  assert.ok(shortCode.notices.includes('qqAuthCode'), 'a short QQ password is flagged as "use the auth code"');
+  const noTls = mail.validateMailDraft({ user: 'me@example.com', host: 'mail.example.com', port: '25', secure: false, starttls: false, pass: 'x' });
+  assert.ok(noTls.errors.starttls, 'plaintext to a public relay is refused');
+  const lanRelay = mail.validateMailDraft({ user: 'bot@example.com', host: '127.0.0.1', port: '2525', secure: false, starttls: false, pass: 'x' });
+  assert.equal(lanRelay.ok, true, `a relay on this machine may skip TLS: ${JSON.stringify(lanRelay.errors)}`);
+  assert.ok(lanRelay.notices.includes('plaintext'), 'and it is still called out');
+  assert.ok(mail.isLocalHost('localhost'));
+  assert.ok(mail.isLocalHost('127.0.0.1'));
+  assert.ok(mail.isLocalHost('192.168.1.9'));
+  assert.ok(mail.isLocalHost('10.0.0.5'));
+  assert.ok(!mail.isLocalHost('smtp.qq.com'));
+  assert.ok(!mail.isLocalHost('8.8.8.8'));
+
+  assert.equal(mail.validateMailDraft({ enabled: false }).ok, true, 'a disabled entry may stay empty');
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'me@qq.com', pass: 'x', secure: true, starttls: true }).errors.starttls);
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'me@qq.com', pass: 'x', port: '0' }).errors.port);
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'me@qq.com', pass: 'x', port: '70000' }).errors.port);
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'nope', pass: 'x' }).errors.user);
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'me@qq.com', pass: 'x', host: 'not a host' }).errors.host);
+  assert.ok(mail.validateMailDraft({ enabled: true, user: 'me@qq.com', pass: 'x', from: 'nonsense' }).errors.from);
+  assert.equal(mail.normalizeMailSettings({ from: 'Aether <b@example.com>' }).from, 'b@example.com');
+
+  assert.equal(mail.mailPassHint('abcdefghijklmnop'), '••••op', 'the hint keeps two characters at most');
+  assert.equal(mail.mailPassHint(''), '');
+  assert.equal(mail.mailPassHint('abc'), '••••');
+
+  const fromEnv = mail.envMailConfig({ AETHER_SMTP_USER: 'me@qq.com', AETHER_SMTP_PASS: 'x'.repeat(16) });
+  assert.equal(fromEnv.host, 'smtp.qq.com', '.env.local still infers the QQ host');
+  assert.equal(fromEnv.port, 465);
+  assert.equal(fromEnv.secure, true);
+  assert.equal(mail.envMailConfig({ AETHER_SMTP_USER: 'me@qq.com' }), null, 'no password means no mailer');
+  const starttlsEnv = mail.envMailConfig({
+    SMTP_USER: 'me@example.com',
+    SMTP_PASS: 'secret',
+    SMTP_HOST: 'mail.example.com',
+    SMTP_PORT: '587',
+  });
+  assert.equal(starttlsEnv.starttls, true, 'port 587 turns STARTTLS on');
+  assert.equal(starttlsEnv.secure, false);
+
+  const saved = { ...qqDefaults, pass: 'p'.repeat(16) };
+  assert.equal(mail.resolveMailConfig(saved, fromEnv).source, 'settings', 'a saved relay outranks .env.local');
+  assert.equal(mail.resolveMailConfig(null, fromEnv).source, 'env');
+  assert.equal(mail.resolveMailConfig(null, null).source, 'none');
+  assert.equal(mail.resolveMailConfig(null, null).config, null);
+  assert.equal(mail.mailConfigFrom(qqDefaults, ''), null, 'no password, no usable config');
+  assert.equal(mail.mailConfigFrom(qqDefaults, 'secret').pass, 'secret');
+  assert.equal(mail.mailConfigFrom({ ...qqDefaults, enabled: false }, 'secret'), null);
+  console.log('PASS mail settings: presets, normalising, field errors, TLS notices, env fallback and precedence');
+
   // Web search parsing (DuckDuckGo html + lite layouts).
   const webSearch = await loadTs(path.resolve('lib/server/web-search.ts'), {
     '@/lib/agent/guard': { safePageUrl: (value) => String(value) },

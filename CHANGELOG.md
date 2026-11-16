@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+- **设置 → 邮件**：SMTP 主机 / 端口 / 账号 / 授权码 / 发件人在界面里配置，授权码用 AES-256-GCM（`encryptSecret`）存到 `<数据目录>/mail.json`，接口只回「有没有密码」与末两位；保存后 `/api/auth` 的 `emailCode.available` 立即变化，无需重启
+- `GET/PUT/POST/DELETE /api/settings/mail`：读取（任何成员）/ 保存（仅 owner）/ 测试连接 / 发送测试邮件 / 清除并回退 `.env.local`，写路径限流
+- `verifyMail()`：只做 TCP → TLS → EHLO → AUTH 的连通性探测，测试邮件也走同一份草稿
+- 明文 SMTP 只允许本机与内网地址（与连接器同一套规则）；公网中继必须隐式 TLS 或 STARTTLS
+
+### Changed
+- `mailer` 的配置改为异步：先读设置页保存的中继，再回退 `AETHER_SMTP_*`；`emailVerificationRequired()` 随之异步
+- `docs/05-部署.md`：SMTP 一节改为「首选设置页，`.env.local` 作为只读回退」
+
 ### Planned
 - 多工作区（按 `workspaceId` 分区数据与路由）
 - 自动更新与代码签名

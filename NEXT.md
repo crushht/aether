@@ -10,7 +10,7 @@
 
 ## 待办
 
-- [ ] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
+- [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
 - [ ] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [ ] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
 - [ ] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
@@ -26,6 +26,7 @@
 
 ## 已完成
 
+- 2026-11-16 邮件服务设置页：新增设置 → 邮件面板（主机/端口/账号/授权码/发件人、TLS 两档、QQ/163/Gmail/Outlook 预设）；授权码经 `encryptSecret`（AES-256-GCM）存 `<数据目录>/mail.json`，接口只回 `hasPass` 与末两位。纯逻辑抽到 `lib/mail-settings.ts`（预设推断、归一、字段校验、明文仅限本机/内网、`.env.local` 解析、保存优先于环境的优先级），`lib/server/mail-settings.ts` 负责文件读写；`mailer` 改异步配置并新增 `verifyMail`；新增 `GET/PUT/POST/DELETE /api/settings/mail`（测试连接、发送测试邮件、清除回退，写操作仅 owner，限流）。保存后 `/api/auth` 的 `emailCode.available`/`source` 无需重启即时变化。验证：`scripts/e2e-mail-settings.mjs`（本地假 SMTP 中继，含 AUTH LOGIN + DATA 断言、保存即生效、授权码不回显、502 拒绝、浏览器面板/测试/报错、清除回退）通过；截图 `docs/checks/262-mail-settings.png`；regression 新增 1 组（预设/归一/字段错误/TLS 提示/环境回退/优先级）；tsc + lint + i18n + build 通过。
 - 2026-11-16 邮箱验证码登录/注册：SMTP 客户端（node:tls，AUTH LOGIN/PLAIN、STARTTLS）、六位码哈希存储（10 分钟、5 次、60s 冷却、每小时 6 封）、登录/注册/找回密码三条路由；真实 QQ 邮箱投递 + code 登录实测通过；`lib/email-rules.ts`、`lib/smtp.ts` 回归 2 组。
 - 2026-11-16 Agent 联网：`web_search`（多引擎链：DDG→Bing→Sogou→百度→360，两套解析器）与 `fetch_url`（正文 + 外链 + 逐跳校验的重定向）；`/api/agent/web-search`、`fetch-page` 实测 cn.bing.com 命中 3 条、linear.app 抽取 40 条链接。
 - 2026-11-16 Agent 逆向：`inspect_artifact` + `/api/agent/inspect`：magic/格式、PE/ELF/Mach-O 头、ZIP/APK 目录、熵、ASCII/UTF-16 字符串、URL/IP/命令/API 指示器、内嵌 base64/hex 载荷、hexdump；回归 1 组覆盖合成 PE。

@@ -56,7 +56,7 @@ export const clearedCookie = { name: SESSION_COOKIE, value: '', path: '/', maxAg
 /** The shape `GET /api/auth` answers with — the client gate boots from this. */
 export async function authState(account: Account | null) {
   const users = await publicUsers();
-  const mail = mailerStatus();
+  const mail = await mailerStatus();
   return {
     mode: authDisabled() ? 'local' : 'accounts',
     authenticated: Boolean(account),
@@ -80,9 +80,10 @@ export async function authState(account: Account | null) {
     /** Whether the sign-in screen may offer "email me a code". */
     emailCode: {
       available: mail.ready,
-      signupRequired: emailVerificationRequired(),
+      signupRequired: await emailVerificationRequired(),
       host: mail.host,
       from: mail.from,
+      source: mail.source,
     },
   };
 }

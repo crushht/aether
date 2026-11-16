@@ -3,6 +3,8 @@ import tls from 'node:tls';
 import { randomBytes } from 'node:crypto';
 import { buildMimeMessage, describeReply, dotStuff, replyOk, takeReply, type SmtpReply } from '@/lib/smtp';
 import { isEmailAddress, normalizeEmail } from '@/lib/email-rules';
+import type { MailConfig } from '@/lib/mail-settings';
+import { effectiveMailConfig } from './mail-settings';
 
 /**
  * A minimal SMTP sender.
@@ -11,58 +13,31 @@ import { isEmailAddress, normalizeEmail } from '@/lib/email-rules';
  * justify a mail library: this speaks just enough SMTP (EHLO, AUTH LOGIN or
  * PLAIN, optional STARTTLS, MAIL/RCPT/DATA) to talk to a normal relay such as
  * QQ Mail, Gmail or a local postfix. TLS certificates are always verified.
+ *
+ * Where the relay settings come from — the settings page (`mail.json`) or
+ * `.env.local` — is decided in `./mail-settings`; this file only speaks SMTP.
  */
 
-export interface MailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  starttls: boolean;
-  user: string;
-  pass: string;
-  from: string;
-  fromName: string;
-}
-
-const env = (name: string) => (process.env[name] ?? '').trim();
-
-function flag(value: string): boolean {
-  return /^(1|true|yes|on)$/i.test(value.trim());
-}
-
-/** QQ Mail is the common case here, so its host is the fallback for a QQ user. */
-function defaultsFor(user: string): { host: string; port: number; secure: boolean } {
-  if (/@qq\.com$/i.test(user)) return { host: 'smtp.qq.com', port: 465, secure: true };
-  if (/@163\.com$/i.test(user)) return { host: 'smtp.163.com', port: 465, secure: true };
-  if (/@gmail\.com$/i.test(user)) return { host: 'smtp.gmail.com', port: 465, secure: true };
-  return { host: '', port: 465, secure: true };
-}
-
-/** Read the relay settings from the environment, or return null when unset. */
-export function mailConfig(): MailConfig | null {
-  const user = env('AETHER_SMTP_USER') || env('SMTP_USER') || env('MAIL_USER');
-  const pass = env('AETHER_SMTP_PASS') || env('SMTP_PASS') || env('MAIL_PASS');
-  const preset = defaultsFor(user);
-  const host = env('AETHER_SMTP_HOST') || env('SMTP_HOST') || preset.host;
-  if (!host || !user || !pass) return null;
-  const port = Number(env('AETHER_SMTP_PORT') || env('SMTP_PORT') || preset.port) || preset.port;
-  const secureEnv = env('AETHER_SMTP_SECURE') || env('SMTP_SECURE');
-  const secure = secureEnv ? flag(secureEnv) : port === 465;
-  const starttls = flag(env('AETHER_SMTP_STARTTLS')) || (!secure && port === 587);
-  const from = env('AETHER_SMTP_FROM') || env('SMTP_FROM') || user;
-  const fromName = env('AETHER_SMTP_FROM_NAME') || env('MAIL_FROM_NAME') || 'Aether';
-  return { host, port, secure, starttls, user, pass, from, fromName };
-}
-
-export function mailerReady(): boolean {
-  return mailConfig() !== null;
-}
+export type { MailConfig };
 
 /** Never includes the password. Safe to hand to the sign-in screen. */
-export function mailerStatus(): { ready: boolean; host: string; from: string } {
-  const config = mailConfig();
-  if (!config) return { ready: false, host: '', from: '' };
-  return { ready: true, host: config.host, from: config.from };
+export async function mailConfig(): Promise<MailConfig | null> {
+  return (await effectiveMailConfig()).config;
+}
+
+export async function mailerReady(): Promise<boolean> {
+  return (await mailConfig()) !== null;
+}
+
+export async function mailerStatus(): Promise<{
+  ready: boolean;
+  host: string;
+  from: string;
+  source: 'settings' | 'env' | 'none';
+}> {
+  const { config, source } = await effectiveMailConfig();
+  if (!config) return { ready: false, host: '', from: '', source: 'none' };
+  return { ready: true, host: config.host, from: config.from, source };
 }
 
 /* ------------------------------------------------------------------ channel */
@@ -155,60 +130,78 @@ async function expect(channel: Channel, codes: number[], what: string): Promise<
   return reply;
 }
 
-async function deliver(config: MailConfig, to: string[], message: string): Promise<void> {
+interface Session {
+  socket: net.Socket;
+  channel: Channel;
+}
+
+/** Connect, greet and sign in — the part a "test connection" also needs. */
+async function open(config: MailConfig): Promise<Session> {
   let socket = await openSocket(config);
   let channel = new Channel(socket);
-  try {
-    await expect(channel, [220], 'The server refused the connection');
+  await expect(channel, [220], 'The server refused the connection');
+  channel.write('EHLO aether.local');
+  const ehlo = await expect(channel, [250], 'EHLO was refused');
+
+  if (config.starttls) {
+    channel.write('STARTTLS');
+    await expect(channel, [220], 'STARTTLS was refused');
+    socket.removeAllListeners('data');
+    socket.removeAllListeners('error');
+    socket.removeAllListeners('close');
+    const secured = tls.connect({ socket, servername: config.host });
+    await new Promise<void>((resolve, reject) => {
+      secured.once('secureConnect', resolve);
+      secured.once('error', reject);
+    });
+    socket = secured;
+    channel = new Channel(socket);
     channel.write('EHLO aether.local');
-    const ehlo = await expect(channel, [250], 'EHLO was refused');
+    await expect(channel, [250], 'EHLO after STARTTLS was refused');
+  }
 
-    if (config.starttls) {
-      channel.write('STARTTLS');
-      await expect(channel, [220], 'STARTTLS was refused');
-      socket.removeAllListeners('data');
-      socket.removeAllListeners('error');
-      socket.removeAllListeners('close');
-      const secured = tls.connect({ socket, servername: config.host });
-      await new Promise<void>((resolve, reject) => {
-        secured.once('secureConnect', resolve);
-        secured.once('error', reject);
-      });
-      socket = secured;
-      channel = new Channel(socket);
-      channel.write('EHLO aether.local');
-      await expect(channel, [250], 'EHLO after STARTTLS was refused');
-    }
+  const mechanisms = (ehlo.lines.join(' ').match(/AUTH[ =]([A-Z0-9 -]+)/i)?.[1] ?? '').toUpperCase();
+  if (!mechanisms.includes('LOGIN') && mechanisms.includes('PLAIN')) {
+    const token = Buffer.from(`\0${config.user}\0${config.pass}`, 'utf8').toString('base64');
+    channel.write(`AUTH PLAIN ${token}`);
+    await expect(channel, [235], 'Sign-in to the mail server failed');
+  } else {
+    channel.write('AUTH LOGIN');
+    await expect(channel, [334], 'The mail server refused the login method');
+    channel.write(Buffer.from(config.user, 'utf8').toString('base64'));
+    await expect(channel, [334], 'The mail server rejected the username');
+    channel.write(Buffer.from(config.pass, 'utf8').toString('base64'));
+    await expect(channel, [235], 'Sign-in to the mail server failed');
+  }
 
-    const mechanisms = (ehlo.lines.join(' ').match(/AUTH[ =]([A-Z0-9 -]+)/i)?.[1] ?? '').toUpperCase();
-    if (!mechanisms.includes('LOGIN') && mechanisms.includes('PLAIN')) {
-      const token = Buffer.from(`\0${config.user}\0${config.pass}`, 'utf8').toString('base64');
-      channel.write(`AUTH PLAIN ${token}`);
-      await expect(channel, [235], 'Sign-in to the mail server failed');
-    } else {
-      channel.write('AUTH LOGIN');
-      await expect(channel, [334], 'The mail server refused the login method');
-      channel.write(Buffer.from(config.user, 'utf8').toString('base64'));
-      await expect(channel, [334], 'The mail server rejected the username');
-      channel.write(Buffer.from(config.pass, 'utf8').toString('base64'));
-      await expect(channel, [235], 'Sign-in to the mail server failed');
-    }
+  return { socket, channel };
+}
 
-    const envelopeFrom = config.from.replace(/^.*<|>.*$/g, '') || config.user;
-    channel.write(`MAIL FROM:<${envelopeFrom}>`);
-    await expect(channel, [250], 'The sender was refused');
-    for (const recipient of to) {
-      channel.write(`RCPT TO:<${recipient}>`);
-      await expect(channel, [250, 251], 'The recipient was refused');
-    }
-    channel.write('DATA');
-    await expect(channel, [354], 'DATA was refused');
-    socket.write(`${dotStuff(message)}\r\n.\r\n`);
-    await expect(channel, [250], 'The message was refused');
-    channel.write('QUIT');
-    await channel.next(5_000).catch(() => null);
+async function goodbye(session: Session): Promise<void> {
+  try {
+    session.channel.write('QUIT');
+    await session.channel.next(5_000).catch(() => null);
   } finally {
-    socket.destroy();
+    session.socket.destroy();
+  }
+}
+
+async function deliver(config: MailConfig, to: string[], message: string): Promise<void> {
+  const session = await open(config);
+  try {
+    const envelopeFrom = config.from.replace(/^.*<|>.*$/g, '') || config.user;
+    session.channel.write(`MAIL FROM:<${envelopeFrom}>`);
+    await expect(session.channel, [250], 'The sender was refused');
+    for (const recipient of to) {
+      session.channel.write(`RCPT TO:<${recipient}>`);
+      await expect(session.channel, [250, 251], 'The recipient was refused');
+    }
+    session.channel.write('DATA');
+    await expect(session.channel, [354], 'DATA was refused');
+    session.socket.write(`${dotStuff(message)}\r\n.\r\n`);
+    await expect(session.channel, [250], 'The message was refused');
+  } finally {
+    await goodbye(session);
   }
 }
 
@@ -217,13 +210,36 @@ export interface SendResult {
   error?: string;
 }
 
-export async function sendMail(input: {
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}): Promise<SendResult> {
-  const config = mailConfig();
+const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Prove the relay works without sending anything: TCP, TLS, EHLO and AUTH.
+ * The settings page calls this before saving, so a typo shows up there instead
+ * of at the next sign-in attempt.
+ */
+export async function verifyMail(config: MailConfig): Promise<SendResult> {
+  let session: Session | null = null;
+  try {
+    session = await open(config);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: reason(error) };
+  } finally {
+    if (session) await goodbye(session);
+  }
+}
+
+export async function sendMail(
+  input: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+  },
+  /** Test sends use the draft that is not saved yet. */
+  override?: MailConfig | null,
+): Promise<SendResult> {
+  const config = override ?? (await mailConfig());
   if (!config) return { ok: false, error: 'The mail service is not configured.' };
   const to = normalizeEmail(input.to);
   if (!isEmailAddress(to)) return { ok: false, error: 'That recipient is not a valid address.' };
@@ -242,6 +258,6 @@ export async function sendMail(input: {
     await deliver(config, [to], message);
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: reason(error) };
   }
 }

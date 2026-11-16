@@ -20,6 +20,12 @@
  *   node scripts/autopilot.mjs --check            # gates only
  *   node scripts/autopilot.mjs --seed             # promote gaps into NEXT.md
  *   node scripts/autopilot.mjs --dry-run --once
+ *   node scripts/autopilot.mjs --once --agent-cmd "claude -p \\"$(cat {{promptFile}})\\""
+ *   node scripts/autopilot.mjs --once --resume     # continue the stored session
+ *
+ * Safety rails: a probe before round one (a silent agent is a hard stop, not a
+ * green round), a no-change check after every round, gates before any commit,
+ * and a lock so two loops never edit one tree.
  */
 import { spawn } from 'node:child_process';
 import {
@@ -134,8 +140,8 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /* ------------------------------------------------------------------- gates */
 
 /** Spawn without a shell: args are passed through untouched. */
-function run(command, args, { timeoutMs = 0, inherit = false } = {}) {
-  return spawnAndCollect(command, args, { timeoutMs, inherit, shell: false });
+function run(command, args, { timeoutMs = 0, inherit = false, extraEnv } = {}) {
+  return spawnAndCollect(command, args, { timeoutMs, inherit, shell: false, extraEnv });
 }
 
 /**
@@ -143,16 +149,16 @@ function run(command, args, { timeoutMs = 0, inherit = false } = {}) {
  * without a shell. One command line string keeps that honest (no args array to
  * mis-quote) and avoids the shell-args deprecation.
  */
-function runShell(commandLine, { timeoutMs = 0, inherit = false } = {}) {
-  return spawnAndCollect(commandLine, [], { timeoutMs, inherit, shell: true });
+function runShell(commandLine, { timeoutMs = 0, inherit = false, extraEnv } = {}) {
+  return spawnAndCollect(commandLine, [], { timeoutMs, inherit, shell: true, extraEnv });
 }
 
-function spawnAndCollect(command, args, { timeoutMs, inherit, shell }) {
+function spawnAndCollect(command, args, { timeoutMs, inherit, shell, extraEnv }) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: root,
       stdio: inherit ? 'inherit' : 'pipe',
-      env: process.env,
+      env: { ...process.env, ...(extraEnv ?? {}) },
       shell,
     });
     let output = '';
@@ -244,24 +250,106 @@ const promptFile = path.join(paths.dir, 'round-prompt.txt');
  * Chinese with quotes and newlines, and `dsh` on Windows is a `.cmd` shim that
  * would mangle it through a shell. PowerShell reads the file and passes it as
  * one argument, so nothing is re-quoted along the way.
+ *
+ * `--json` is always on: the opening event carries the session identity (a
+ * fresh id per run, unless `--resume` adopts the stored one), and the stream is
+ * kept in `.improve/last-round.jsonl` so a quiet round can be explained later.
+ *
+ * `--agent-cmd` swaps the agent entirely: `{{promptFile}}` and `{{session}}`
+ * are substituted, so any one-shot CLI (Codex, Claude Code, a local script)
+ * can drive the loop.
  */
-function runAgent(sessionId, prompt, timeoutMs) {
+async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
   mkdirSync(paths.dir, { recursive: true });
   writeFileSync(promptFile, prompt, 'utf8');
 
+  if (custom) {
+    const line = custom.replaceAll('{{promptFile}}', promptFile).replaceAll('{{session}}', sessionId ?? '');
+    return { ...(await runShell(line, { timeoutMs, inherit: true })), sessionId: null, final: '', tools: [] };
+  }
+
   const isWindows = process.platform === 'win32';
-  const command = isWindows ? 'powershell' : 'dsh';
-  const args = isWindows
-    ? [
+  const adopt = resume && sessionId ? ` --session-id "${sessionId}"` : '';
+  const result = isWindows
+    ? await run('powershell', [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        `& dsh headless --session-id "${sessionId}" (Get-Content -Raw -LiteralPath "${promptFile}")`,
-      ]
-    : ['headless', '--session-id', sessionId, prompt];
+        `& dsh headless --json${adopt} (Get-Content -Raw -LiteralPath "${promptFile}")`,
+      ], { timeoutMs })
+    : await run(
+        'dsh',
+        ['headless', '--json', ...(resume && sessionId ? ['--session-id', sessionId] : []), prompt],
+        { timeoutMs },
+      );
 
-  return run(command, args, { timeoutMs, inherit: true });
+  return summarizeStream(result);
+}
+
+/** Read the NDJSON run back: session id, tool calls, final answer. */
+function summarizeStream(result) {
+  writeFileSync(path.join(paths.dir, 'last-round.jsonl'), result.output ?? '', 'utf8');
+  let sessionId = null;
+  let final = '';
+  let text = '';
+  const tools = [];
+  for (const line of (result.output ?? '').split('\n')) {
+    if (!line.trim().startsWith('{')) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event.type === 'session' && typeof event.sessionId === 'string') sessionId = event.sessionId;
+    if (event.type === 'tool_call') {
+      const name = event.name ?? event.tool ?? event.call?.name;
+      if (typeof name === 'string') tools.push(name);
+    }
+    if (event.type === 'text' && typeof event.text === 'string') text += event.text;
+    if (event.type === 'final' && typeof event.text === 'string') final = event.text;
+  }
+
+  const answer = (final || text).trim();
+  console.log(answer ? `agent: ${answer.slice(0, 1_500)}` : 'agent: (no final answer)');
+  if (tools.length) console.log(`tools: ${[...new Set(tools)].join(', ')}`);
+  log(`agent session ${sessionId ?? 'unknown'}; tools ${tools.length}; answer ${answer.length} chars`);
+  return { code: result.code, sessionId, final: answer, tools };
+}
+
+/**
+ * A one-shot CLI that answers nothing is worse than one that fails: the loop
+ * would "succeed" every round without touching a line. Ask the agent for a
+ * short answer once, and stop before round one when it stays silent.
+ */
+async function probeAgent(custom) {
+  const probeSession = `aether-probe-${Date.now().toString(36)}`;
+  const prompt = 'Reply with the single word OK and nothing else. Do not use tools.';
+  if (custom) {
+    const line = custom
+      .replaceAll('{{promptFile}}', path.join(paths.dir, 'probe-prompt.txt'))
+      .replaceAll('{{session}}', probeSession);
+    writeFileSync(path.join(paths.dir, 'probe-prompt.txt'), prompt, 'utf8');
+    const result = await runShell(line, { timeoutMs: 120_000 });
+    return { ok: result.code === 0 && result.output.trim().length > 0, output: result.output.slice(-400), code: result.code };
+  }
+
+  const isWindows = process.platform === 'win32';
+  const result = isWindows
+    ? await run(
+        'powershell',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          `& dsh headless --session-id "${probeSession}" "${prompt}"`,
+        ],
+        { timeoutMs: 120_000 },
+      )
+    : await run('dsh', ['headless', '--session-id', probeSession, prompt], { timeoutMs: 120_000 });
+  return { ok: result.code === 0 && result.output.trim().length > 0, output: result.output.slice(-400), code: result.code };
 }
 
 function promptFor(item, state, gateSummary) {
@@ -359,11 +447,35 @@ if (has('--status')) {
   const doPush = has('--push') || DEFAULTS.push;
   const dryRun = has('--dry-run');
   const noAgent = has('--no-agent');
+  const customAgent = value('--agent-cmd', '');
   const timeoutMs = num('--timeout', DEFAULTS.timeoutMinutes) * 60_000;
 
   if (!dryRun) lock();
   let state = readState();
   if (!state.sessionId) state = saveState({ sessionId: `aether-autopilot-${Date.now().toString(36)}`, rounds: 0, history: [] });
+
+  if (!dryRun && !noAgent && !has('--no-probe')) {
+    process.stdout.write('· probing the agent … ');
+    const probe = await probeAgent(customAgent);
+    process.stdout.write(probe.ok ? 'answered\n' : 'SILENT\n');
+    log(`agent probe: ${probe.ok ? 'ok' : `silent (exit ${probe.code})`}`);
+    if (!probe.ok && !has('--force')) {
+      console.error(
+        [
+          'The one-shot agent produced no answer, so a round would change nothing.',
+          'For the dsh headless profile this usually means its credentials are missing:',
+          '  the headless profile reads API keys from the launch environment, <cwd>/.env or $DSH_HOME/.env,',
+          '  and ignores keys saved in the GUI.',
+          'Point the loop at another CLI instead with:',
+          '  node scripts/autopilot.mjs --once --agent-cmd "claude -p \\"$(cat {{promptFile}})\\""',
+          'or pass --force to run anyway, or --no-agent to only run the gates.',
+        ].join('\n'),
+      );
+      saveState({ phase: 'agent-unavailable' });
+      process.exitCode = 4;
+      process.exit();
+    }
+  }
 
   let completed = 0;
   for (let round = 1; round <= rounds; round += 1) {
@@ -386,7 +498,11 @@ if (has('--status')) {
 
     console.log(`\n=== autopilot round ${(readState().rounds ?? 0) + 1} · ${item}\n`);
     if (dryRun) {
-      console.log(`dsh headless --session-id ${state.sessionId} "<prompt>"`);
+      console.log(
+        customAgent
+          ? `agent: ${customAgent}`
+          : `dsh headless --session-id ${state.sessionId} "<prompt>"`,
+      );
       console.log('--- prompt ---');
       console.log(text);
       break;
@@ -394,9 +510,11 @@ if (has('--status')) {
 
     saveState({ phase: 'working', lastItem: item });
     log(`round start: ${item}`);
+    const before = (await git('status --porcelain')).output;
 
     if (!noAgent) {
-      const result = await runAgent(state.sessionId, text, timeoutMs);
+      const result = await runAgent(state.sessionId, text, timeoutMs, customAgent, has('--resume'));
+      if (result.sessionId) saveState({ sessionId: result.sessionId });
       log(`agent exit ${result.code}`);
       if (result.code !== 0) {
         saveState({ phase: 'agent-failed', lastExitCode: result.code });
@@ -404,6 +522,17 @@ if (has('--status')) {
         process.exitCode = result.code;
         break;
       }
+    }
+
+    const after = (await git('status --porcelain')).output;
+    if (!noAgent && after === before && !has('--allow-empty-rounds')) {
+      console.error(
+        `the agent finished but the tree did not change — "${item}" needs a person, a different agent or clearer instructions.`,
+      );
+      log(`no progress: ${item}`);
+      saveState({ phase: 'no-progress', lastItem: item });
+      process.exitCode = 5;
+      break;
     }
 
     const results = await gates(gateNames);

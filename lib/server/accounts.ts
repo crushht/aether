@@ -203,7 +203,7 @@ export async function register(input: RegisterInput): Promise<Success | Failure>
   }
 
   // a mailbox is only proven when a mailer can actually deliver the code
-  if (emailVerificationRequired()) {
+  if (await emailVerificationRequired()) {
     const consumed = await consumeEmailCode({ email, purpose: 'signup', code: input.emailCode ?? '' });
     if (!consumed.ok) return { ok: false, status: consumed.status, error: consumed.error };
   }

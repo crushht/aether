@@ -60,11 +60,13 @@ export async function POST(request: Request) {
   // Echo mode is for tests and local smoke runs: hand the code back and do not
   // put mail on the wire at all.
   const echo = process.env.AETHER_EMAIL_ECHO === '1';
-  const delivered = !echo && mailerReady()
-    ? await sendMail({ to: email, subject: copy.subject, text: copy.text, html: copy.html })
-    : { ok: false as const, error: echo ? 'Echo mode: nothing was sent.' : 'The mail service is not configured.' };
+  const ready = await mailerReady();
+  const delivered =
+    !echo && ready
+      ? await sendMail({ to: email, subject: copy.subject, text: copy.text, html: copy.html })
+      : { ok: false as const, error: echo ? 'Echo mode: nothing was sent.' : 'The mail service is not configured.' };
 
-  if (!delivered.ok && !echo && mailerReady()) {
+  if (!delivered.ok && !echo && ready) {
     return NextResponse.json({ ok: false, error: delivered.error ?? 'The mail could not be sent.' }, { status: 502 });
   }
 
@@ -74,7 +76,7 @@ export async function POST(request: Request) {
     purpose,
     expiresAt: issued.expiresAt,
     delivered: delivered.ok,
-    mailer: mailerStatus(),
+    mailer: await mailerStatus(),
     // with no relay, or in echo mode, the code comes back so a local workspace
     // (and the browser suite) can still sign in
     ...(echo || !delivered.ok ? { devCode: issued.code } : {}),

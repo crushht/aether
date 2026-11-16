@@ -39,6 +39,7 @@ docs/checks/*
 !docs/checks/206-aether-login.png
 !docs/checks/224-mobile-list.png
 !docs/checks/231-project-space.png
+!docs/checks/262-mail-settings.png
 
 # desktop build output
 dist/

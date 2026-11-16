@@ -67,7 +67,7 @@ export type IssueResult =
 export type ConsumeResult = { ok: true } | { ok: false; status: number; error: string };
 
 /** A mailbox can only be proven when a mailer is configured; local mode is exempt. */
-export function emailVerificationRequired(): boolean {
+export async function emailVerificationRequired(): Promise<boolean> {
   const forced = (process.env.AETHER_REQUIRE_EMAIL_VERIFICATION ?? '').toLowerCase();
   if (forced === '0' || forced === 'false') return false;
   if (forced === '1' || forced === 'true') return true;

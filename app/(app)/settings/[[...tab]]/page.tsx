@@ -14,6 +14,7 @@ import { cn, plural, relativeTime } from '@/lib/utils';
 import { Avatar, Button, Kbd } from '@/components/ui/primitives';
 import { AgentSettingsPanel } from '@/components/agent/agent-settings';
 import { ConnectorsPanel } from '@/components/settings/connectors';
+import { MailPanel } from '@/components/settings/mail';
 import { TemplatesPanel } from '@/components/settings/templates';
 import { NotificationsPanel } from '@/components/settings/notifications';
 import { WorkspaceTransfer } from '@/components/settings/workspace-transfer';
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'preferences', label: 'Preferences' },
   { key: 'agents', label: 'Agents' },
   { key: 'connectors', label: 'Connectors' },
+  { key: 'mail', label: 'Email' },
   { key: 'templates', label: 'Templates' },
   { key: 'notifications', label: 'Notifications' },
   { key: 'members', label: 'Members' },
@@ -625,6 +627,7 @@ export default function SettingsPage() {
         {active === 'account' ? <AccountPanel /> : null}
         {active === 'agents' ? <AgentSettingsPanel /> : null}
         {active === 'connectors' ? <ConnectorsPanel /> : null}
+        {active === 'mail' ? <MailPanel /> : null}
         {active === 'templates' ? <TemplatesPanel /> : null}
         {active === 'notifications' ? <NotificationsPanel /> : null}
         {active === 'members' ? <MembersPanel /> : null}
