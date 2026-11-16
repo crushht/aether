@@ -44,6 +44,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,18 @@ const paths = {
   gateLogs: path.join(root, '.improve', 'logs'),
 };
 
+/**
+ * Progress must be visible while a round runs: Node block-buffers stdout when
+ * it is a pipe (a harness job, a redirect), so console.log appears only when
+ * the process exits. writeSync(1, …) goes straight to the descriptor.
+ */
+function say(line = '') {
+  try {
+    writeSync(1, `${line}\n`);
+  } catch {
+    process.stdout.write(`${line}\n`);
+  }
+}
 const argv = process.argv.slice(2);
 const has = (flag) => argv.includes(flag);
 const value = (flag, fallback) => {
@@ -410,7 +423,7 @@ const promptFile = path.join(paths.dir, 'round-prompt.txt');
  * are substituted, so any one-shot CLI (Codex, Claude Code, a local script)
  * can drive the loop.
  */
-async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
+async function runAgent(sessionId, prompt, timeoutMs, custom, resume, patch) {
   mkdirSync(paths.dir, { recursive: true });
   writeFileSync(promptFile, prompt, 'utf8');
 
@@ -433,6 +446,7 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
 
   const isWindows = process.platform === 'win32';
   const adopt = resume && sessionId ? ` --session-id "${sessionId}"` : '';
+  const overlay = patch ? ` --patch "${path.resolve(root, patch)}"` : '';
   const started = Date.now();
   const onLine = (line) => {
     if (!line.startsWith('{')) return;
@@ -444,12 +458,12 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
     }
     const at = Math.round((Date.now() - started) / 1000);
     if (event.type === 'session') {
-      console.log(`  [${at}s] session ${String(event.sessionId ?? '').slice(0, 24)}…`);
+      say(`  [${at}s] session ${String(event.sessionId ?? '').slice(0, 24)}…`);
     } else if (event.type === 'tool_call') {
       const name = event.name ?? event.tool ?? event.call?.name;
-      if (name) console.log(`  [${at}s] · ${name}`);
+      if (name) say(`  [${at}s] · ${name}`);
     } else if (event.type === 'status' && event.status === 'error') {
-      console.log(`  [${at}s] ! ${String(event.message ?? 'error').slice(0, 160)}`);
+      say(`  [${at}s] ! ${String(event.message ?? 'error').slice(0, 160)}`);
     }
   };
   const result = isWindows
@@ -460,13 +474,19 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
           '-ExecutionPolicy',
           'Bypass',
           '-Command',
-          `& dsh headless --json${adopt} (Get-Content -Raw -LiteralPath "${promptFile}")`,
+          `& dsh headless${overlay} --json${adopt} (Get-Content -Raw -LiteralPath "${promptFile}")`,
         ],
         { timeoutMs, onLine },
       )
     : await run(
         'dsh',
-        ['headless', '--json', ...(resume && sessionId ? ['--session-id', sessionId] : []), prompt],
+        [
+          'headless',
+          ...(patch ? ['--patch', path.resolve(root, patch)] : []),
+          '--json',
+          ...(resume && sessionId ? ['--session-id', sessionId] : []),
+          prompt,
+        ],
         { timeoutMs, onLine },
       );
 
@@ -510,9 +530,9 @@ function summarizeStream(result) {
   writeFileSync(path.join(paths.dir, 'last-round.jsonl'), result.output ?? '', 'utf8');
   const { sessionId, final: answer, tools, error } = parseStream(result.output);
 
-  if (error) console.log(`agent: ${error}`);
-  else console.log(answer ? `agent: ${answer.slice(0, 1_500)}` : 'agent: (no final answer)');
-  if (tools.length) console.log(`tools: ${[...new Set(tools)].join(', ')}`);
+  if (error) say(`agent: ${error}`);
+  else say(answer ? `agent: ${answer.slice(0, 1_500)}` : 'agent: (no final answer)');
+  if (tools.length) say(`tools: ${[...new Set(tools)].join(', ')}`);
   log(
     `agent session ${sessionId ?? 'unknown'}; tools ${tools.length}; answer ${answer.length} chars` +
       (error ? `; error ${error}` : ''),
@@ -526,7 +546,7 @@ function summarizeStream(result) {
  * short answer and require a real `final`; a provider transport error counts as
  * "not answering", because dsh exits 0 on it.
  */
-async function probeAgent(custom) {
+async function probeAgent(custom, patch) {
   const probeSession = `aether-probe-${Date.now().toString(36)}`;
   const prompt = 'Reply with the single word OK and nothing else. Do not use tools.';
   if (custom) {
@@ -542,13 +562,18 @@ async function probeAgent(custom) {
   }
 
   const isWindows = process.platform === 'win32';
+  const overlay = patch ? ` --patch "${path.resolve(root, patch)}"` : '';
   const result = isWindows
     ? await run(
         'powershell',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `& dsh headless --json "${prompt}"`],
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `& dsh headless${overlay} --json "${prompt}"`],
         { timeoutMs: 120_000 },
       )
-    : await run('dsh', ['headless', '--json', prompt], { timeoutMs: 120_000 });
+    : await run(
+        'dsh',
+        ['headless', ...(patch ? ['--patch', path.resolve(root, patch)] : []), '--json', prompt],
+        { timeoutMs: 120_000 },
+      );
 
   const { final, error } = parseStream(result.output);
   const reason = error || (final ? '' : 'no final answer');
@@ -612,7 +637,7 @@ async function status() {
     /* no loop running */
   }
 
-  console.log(
+  say(
     JSON.stringify(
       {
         project: name,
@@ -698,7 +723,7 @@ async function runCheck() {
       ref: stashed.ref,
       message: stashed.message,
     };
-    console.log(stashed.ok ? `· stashed the failing tree as ${stashed.ref}` : `· stash failed: ${stashed.detail}`);
+    say(stashed.ok ? `· stashed the failing tree as ${stashed.ref}` : `· stash failed: ${stashed.detail}`);
     log(`stash on fail: ${stashed.ok ? stashed.ref : `failed (${stashed.detail})`}`);
   }
 
@@ -714,7 +739,7 @@ async function runCheck() {
   saveState({ lastGate: { at, ok: report.summary.ok, results: report.results, stash: report.stash } });
 
   const rowOf = (name) => report.results.find((row) => row.name === name);
-  console.log(
+  say(
     `· gates: ${selection.planned
       .map((name) => {
         const row = rowOf(name);
@@ -722,8 +747,8 @@ async function runCheck() {
       })
       .join(' · ')}`,
   );
-  if (report.logs.length) console.log(`· logs: ${report.logs.map((entry) => entry.file).join(', ')}`);
-  console.log(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
+  if (report.logs.length) say(`· logs: ${report.logs.map((entry) => entry.file).join(', ')}`);
+  say(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
   log(`check: ${report.summary.ok ? 'pass' : 'fail'}`);
   process.exitCode = module.exitCodeFor(report);
 }
@@ -732,7 +757,7 @@ if (has('--status')) {
   await status();
 } else if (has('--seed')) {
   const seeded = seed(num('--seed-count', DEFAULTS.seedCount));
-  console.log(seeded.length ? `seeded:\n- ${seeded.join('\n- ')}` : 'no candidates to seed');
+  say(seeded.length ? `seeded:\n- ${seeded.join('\n- ')}` : 'no candidates to seed');
 } else if (has('--check')) {
   await runCheck();
 } else {
@@ -746,6 +771,7 @@ if (has('--status')) {
   const dryRun = has('--dry-run');
   const noAgent = has('--no-agent');
   const customAgent = value('--agent-cmd', '');
+  const patchFile = value('--patch', '');
   const timeoutMs = num('--timeout', DEFAULTS.timeoutMinutes) * 60_000;
   const retries = num('--retries', DEFAULTS.retries);
   const retryDelaySeconds = num('--retry-delay', DEFAULTS.retryDelaySeconds);
@@ -758,7 +784,7 @@ if (has('--status')) {
 
   if (!dryRun && !noAgent && !has('--no-probe')) {
     process.stdout.write('· probing the agent … ');
-    let probe = await probeAgent(customAgent);
+    let probe = await probeAgent(customAgent, patchFile);
     let tries = 0;
     while (!probe.ok) {
       const exhausted = waitUntil ? Date.now() >= waitUntil : tries >= retries;
@@ -766,7 +792,7 @@ if (has('--status')) {
       tries += 1;
       process.stdout.write(waitUntil ? '.' : `retry ${tries}/${retries} … `);
       await new Promise((resolve) => setTimeout(resolve, retryDelaySeconds * 1_000));
-      probe = await probeAgent(customAgent);
+      probe = await probeAgent(customAgent, patchFile);
     }
     process.stdout.write(probe.ok ? 'answered\n' : 'UNAVAILABLE\n');
     log(`agent probe: ${probe.ok ? 'ok' : `unavailable (${probe.reason})`}`);
@@ -799,7 +825,7 @@ if (has('--status')) {
       if (seeded.length) items = pending();
     }
     if (!items.length) {
-      console.log('queue is empty and there is nothing to seed — stopping.');
+      say('queue is empty and there is nothing to seed — stopping.');
       saveState({ phase: 'queue-complete' });
       break;
     }
@@ -810,15 +836,15 @@ if (has('--status')) {
       .join(', ');
     const text = promptFor(item, readState(), gateSummary);
 
-    console.log(`\n=== autopilot round ${(readState().rounds ?? 0) + 1} · ${item}\n`);
+    say(`\n=== autopilot round ${(readState().rounds ?? 0) + 1} · ${item}\n`);
     if (dryRun) {
-      console.log(
+      say(
         customAgent
           ? `agent: ${customAgent}`
           : `dsh headless --session-id ${state.sessionId} "<prompt>"`,
       );
-      console.log('--- prompt ---');
-      console.log(text);
+      say('--- prompt ---');
+      say(text);
       break;
     }
 
@@ -831,13 +857,13 @@ if (has('--status')) {
       // endpoint blinked. Retry the same item with a fresh session before
       // calling it a day.
       let attempt = 0;
-      let result = await runAgent(state.sessionId, text, timeoutMs, customAgent, has('--resume'));
+      let result = await runAgent(state.sessionId, text, timeoutMs, customAgent, has('--resume'), patchFile);
       while (result.error && !result.code && attempt < retries) {
         attempt += 1;
-        console.log(`  ! ${result.error} — retry ${attempt}/${retries} in ${retryDelaySeconds}s`);
+        say(`  ! ${result.error} — retry ${attempt}/${retries} in ${retryDelaySeconds}s`);
         log(`agent transport error (${result.error}); retry ${attempt}/${retries}`);
         await new Promise((resolve) => setTimeout(resolve, retryDelaySeconds * 1_000));
-        result = await runAgent(state.sessionId, text, timeoutMs, customAgent, false);
+        result = await runAgent(state.sessionId, text, timeoutMs, customAgent, false, patchFile);
       }
       if (result.sessionId) saveState({ sessionId: result.sessionId });
       log(`agent exit ${result.code}${result.error ? ` (${result.error})` : ''}`);
@@ -871,7 +897,7 @@ if (has('--status')) {
     const module = await loadGateModule();
     if (module) {
       const report = await publishGateReport({ module, at: new Date().toISOString(), planned: gateNames, results, logs });
-      console.log(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
+      say(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
       log(`round gate report: ${report.summary.ok ? 'pass' : 'fail'}`);
     }
     saveState({ lastGate: { at: new Date().toISOString(), ok: allOk, results }, phase: allOk ? 'gate-passed' : 'gate-failed' });
@@ -881,7 +907,7 @@ if (has('--status')) {
       log(`gate failed: ${failed?.name}`);
       if (has('--revert-on-fail')) {
         const stashed = await stashTree(failed?.name ?? 'gate');
-        console.log(
+        say(
           stashed.ok
             ? `changes stashed as ${stashed.ref} so the tree stays green.`
             : `stash failed (${stashed.detail}); the tree is left as it was.`,
@@ -894,17 +920,17 @@ if (has('--status')) {
     // `--no-agent` is a driver smoke test: gates only, and never a commit —
     // otherwise whatever happened to be in the tree gets a round's name.
     if (noAgent) {
-      console.log('--no-agent: gates only, nothing committed.');
+      say('--no-agent: gates only, nothing committed.');
       break;
     }
 
     if (doCommit) {
       const committed = await commit(`feat: ${item.slice(0, 64)}`);
       if (committed.ok) {
-        console.log('committed.');
+        say('committed.');
         log(`commit: ${item}`);
       } else {
-        console.log(`nothing committed (${committed.reason}).`);
+        say(`nothing committed (${committed.reason}).`);
       }
     }
 
@@ -912,7 +938,7 @@ if (has('--status')) {
     // lose ten finished rounds to one flaky minute on the network.
     if (doPush) {
       const pushed = await push();
-      console.log(pushed.ok ? `pushed to origin/${pushed.branch}.` : `push failed: ${pushed.reason}`);
+      say(pushed.ok ? `pushed to origin/${pushed.branch}.` : `push failed: ${pushed.reason}`);
       log(`push: ${pushed.ok ? 'ok' : pushed.reason}`);
     }
 
@@ -925,16 +951,16 @@ if (has('--status')) {
         { at: new Date().toISOString(), item, gates: results.map((result) => `${result.name}:${result.ok ? 'ok' : 'fail'}`) },
       ],
     });
-    console.log(`round done (${completed} this run).`);
+    say(`round done (${completed} this run).`);
   }
 
   if (doPush && !dryRun && !process.exitCode) {
     const pushed = await push();
     if (!pushed.ok) {
-      console.log(`final push failed: ${pushed.reason}`);
+      say(`final push failed: ${pushed.reason}`);
       process.exitCode = 1;
     }
   }
   if (!dryRun) saveState({ phase: 'idle' });
-  console.log(`\nautopilot finished: ${completed} round(s) completed.`);
+  say(`\nautopilot finished: ${completed} round(s) completed.`);
 }

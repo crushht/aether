@@ -1,0 +1,16 @@
+# Point the dsh headless profile at a local OpenAI-compatible gateway.
+#
+# The shipped headless profile defaults to the magpie gateway on 127.0.0.1:3425.
+# When that one is down (TRANSPORT: Connection error) but another local gateway
+# is up, this overlay switches the agent's default model to it:
+#
+#   WB_PROXY_API_KEY=... in $DSH_HOME/.env   (never in this file)
+#   dsh headless --patch scripts/headless-local-gateway.yaml --json "reply OK"
+#
+# The provider id (`wb-proxy`, baseURL http://127.0.0.1:8788/v1) comes from the
+# headless profile itself; this file only chooses which provider and model the
+# agent uses by default.
+- id: agent-default-model
+  config:
+    provider: wb-proxy
+    model: "deepseek-v4.1-flash"
