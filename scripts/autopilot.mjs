@@ -82,6 +82,7 @@ const DEFAULTS = {
   seedCount: 3,
   retries: 2,
   retryDelaySeconds: 30,
+  waitMinutes: 0,
 };
 
 /* ------------------------------------------------------------------- state */
@@ -748,6 +749,8 @@ if (has('--status')) {
   const timeoutMs = num('--timeout', DEFAULTS.timeoutMinutes) * 60_000;
   const retries = num('--retries', DEFAULTS.retries);
   const retryDelaySeconds = num('--retry-delay', DEFAULTS.retryDelaySeconds);
+  const waitMinutes = num('--wait', DEFAULTS.waitMinutes);
+  const waitUntil = waitMinutes ? Date.now() + waitMinutes * 60_000 : 0;
 
   if (!dryRun) lock();
   let state = readState();
@@ -757,9 +760,11 @@ if (has('--status')) {
     process.stdout.write('· probing the agent … ');
     let probe = await probeAgent(customAgent);
     let tries = 0;
-    while (!probe.ok && tries < retries) {
+    while (!probe.ok) {
+      const exhausted = waitUntil ? Date.now() >= waitUntil : tries >= retries;
+      if (exhausted) break;
       tries += 1;
-      process.stdout.write(`retry ${tries}/${retries} … `);
+      process.stdout.write(waitUntil ? '.' : `retry ${tries}/${retries} … `);
       await new Promise((resolve) => setTimeout(resolve, retryDelaySeconds * 1_000));
       probe = await probeAgent(customAgent);
     }
@@ -769,12 +774,14 @@ if (has('--status')) {
       console.error(
         [
           `The one-shot agent did not answer (${probe.reason}), so a round would change nothing.`,
+          waitMinutes
+            ? `Waited ${waitMinutes} minute(s) for it to come back.`
+            : 'Pass --wait <minutes> to keep probing instead of stopping.',
           'For the dsh headless profile this usually means one of:',
-          '  - the provider is unreachable right now (run again in a minute), or',
+          '  - the provider gateway is down (the profile points at a local 127.0.0.1 port), or',
           '  - its credentials are missing: the headless profile reads API keys from the launch',
           '    environment, <cwd>/.env or $DSH_HOME/.env, and ignores keys saved in the GUI.',
-          'Point the loop at another CLI instead with:',
-          '  node scripts/autopilot.mjs --once --agent-cmd "claude -p \\"$(cat {{promptFile}})\\""',
+          'Point the loop at another CLI instead with --agent-cmd (see scripts/agent-claude.cmd),',
           'or pass --force to run anyway, or --no-agent to only run the gates.',
         ].join('\n'),
       );

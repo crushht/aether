@@ -10,6 +10,10 @@
 
 ## 待办
 
+
+- [x] P1 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` 覆盖发送倒计时、错误码递减、注册校验、找回密码四条路径（`AETHER_EMAIL_ECHO=1` 下取码）
+- [x] P2 审计流覆盖认证事件：登录成功/失败、验证码发送、密码重置写入工作区审计（作者、IP、UA）
+- [ ] P2 Cycle 燃尽图：按 cycle 起止日期计算每日剩余点，SVG 折线，纯函数 + 回归
 - [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
 - [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
@@ -26,6 +30,7 @@
 
 ## 已完成
 
+- 2026-11-16 差距清单补勾：`--seed` 从 `docs/11` 搬回来三条，其中「邮件验证码浏览器验收」与「审计流覆盖认证事件」早已交付（`scripts/e2e-email-code.mjs` 两段通过；审计见 `b650ea8` 与 `02577a1`），直接勾掉；只剩 Cycle 燃尽图是真待办。顺手在 `docs/11` 写明「完成即勾，否则会被重新搬进队列」。
 - 2026-11-16 评论附件刷新丢失（判定为测试时序，不是产品 bug）：`scripts/e2e-attachments.mjs` 在 500ms 防抖落盘之前就 `goto` 刷新，附件还在内存里没 PUT 出去；加一段「轮询 `/api/workspace` 直到附件与评论文档真的进了快照」再刷新。证据：`git stash` 掉改动跑基线超时失败（exit 1），恢复后 `PASS browser: issue and comment attachments upload, persist, and delete`。
 - 2026-11-16 安全审计流收尾：第 6 轮交的 `scripts/e2e-security-audit.mjs` 有两处是「写了没验证」——(1) 用 `data-settings-tab` 判断登录成功，这个属性在源码里不存在，改成侧栏 `a[href="/inbox"]`；(2) 用掩码地址断言「看不到别人事件」，而两个测试账号同域掩码都是 `a***@example.invalid`，改成比 `actorId`；另把「本机来源」放宽为 loopback 或 `local`（Next dev 会从 socket 填 `X-Forwarded-For`，记的是 `::ffff:127.0.0.1`）。修完 `node scripts/e2e-security-audit.mjs` 两段全过（7 kinds、掩码、拒绝徽标、筛选、限额、账号隔离），截图 `docs/checks/266-security-audit.png`。
 - 2026-11-16 附件逆向入口：议题附件卡片的 ⋯ 菜单新增「分析」，一个请求打到 `/api/agent/inspect` 并在面板里渲染同一张 `inspect` 卡片（格式/大小/熵/加壳提示、sha256·md5 一键复制、结构、备注、指示器、内嵌载荷、字符串前 N / 总数字）。纯逻辑抽到 `lib/agent/inspect-report.ts`：`structureLines`（PE 头 + 分区行、ELF、Mach-O、ZIP 目录，分区 ≤10 / 条目 ≤15 / 单行 ≤300，字段先过 `oneLine` 去控制符再裁剪，嵌套行用 `·` 前缀因为卡片会 trim 掉缩进）、`inspectCardFromResponse`（失败响应、非报告形状、无 size 无 format 一律 null）、`inspectRequestBody`（dataUrl 优先于 text，无字节返回 null —— 界面直接说「没有可分析的字节」而不再打服务端）；`lib/agent/tools.ts` 的 `inspect_artifact` 改为复用同一对函数，回执与面板不会再对同一个样本给出两种描述。界面 `components/issue/attachment-analysis.tsx`（遮罩 + Escape 关闭，且 `stopPropagation` 掉全局 Escape 快捷键，否则会把背后的议题抽屉一起关掉）+ `attachments-section.tsx` 的 ⋯ 菜单（`aria-haspopup`/`aria-expanded`、点击外部关闭）。验证：regression 新增 1 组（30 条断言：无头/垃圾字段降级、分区与条目裁剪与 `· … N more`、控制符不落屏幕、ELF/Mach-O 行、哈希校验与大小写归一、失败响应与无 size 无 format 拒绝、dataUrl 优先、无字节拒绝、名称裁剪 200）；`scripts/e2e-attachment-inspect.mjs` 在真实 dev（AUTH_DISABLED=1，端口 4321）验收 —— API 段（MZ 字节 → `format.id=mz`、sha256 与本地 `createHash` 一致、空 artifact 与「既无 base64 也无 text」各 400）+ 浏览器段（⋯ 菜单开合与外部点击关闭、文本附件报告出 command/url 指示器与内嵌 `DOS executable (MZ)`、sha256 复制值等于附件字节的哈希、Escape 只关面板不关抽屉、PNG dataURL 按字节分析出 `PNG image`、无字节附件只显示本地提示且不渲染报告）；截图 `docs/checks/265-attachment-analysis.png`；tsc + eslint(0 problems) + i18n(0 missing / 0 hardcoded) 通过。
