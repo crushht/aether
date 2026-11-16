@@ -168,10 +168,11 @@ scripts/        回归、e2e（CDP）、打包、图标生成、i18n 与 CSP 检
 ```bash
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint，0 problems
-npm test             # 纯函数回归（含邮件规则 / SMTP 组帧 / 搜索解析 / 静态逆向）
+npm test             # 纯函数回归（含邮件规则 / SMTP 组帧 / 搜索解析 / 静态逆向 / 门禁报告）
 npm run i18n         # 缺键 + 硬编码中文扫描（0 missing / 0 hardcoded）
 npm run build        # 生产构建
 npm run csp:check    # CSP 违规汇总（AETHER_CSP_ENFORCE=1 可切强制）
+npm run autopilot:check   # 与 CI 的 gate job 同一条命令，报告写进 .improve/gate-report.md
 ```
 
 浏览器验收（Node 内置 WebSocket + CDP，无第三方依赖）：
@@ -193,9 +194,13 @@ npm run autopilot:status                 # 队列 / 候选 / 上次门禁 / git 
 npm run autopilot                        # 跑一轮
 node scripts/autopilot.mjs --rounds 3    # 连跑三轮
 node scripts/autopilot.mjs --until-dry   # 跑到队列为空
-node scripts/autopilot.mjs --check       # 只跑门禁（CI 用这个）
+node scripts/autopilot.mjs --check       # 只跑门禁（CI 的 gate job 就是这个）
 node scripts/autopilot.mjs --seed        # 从 docs/11-产品差距清单.md 取候选进队列
 ```
+
+同一个 `--check` 也是 PR 门禁：`.github/workflows/ci.yml` 的 `gate` job 跑 `--gates typecheck,regression --stash-on-fail`，
+把 `.improve/gate-report.md` 写进 step summary，并上传 `gate-report`（报告 + 每道门的完整日志，保留 14 天）。
+门禁失败时它会把未提交的改动 `git stash` 掉，让下一次重跑从干净树开始。
 
 细节与安全边界见 [docs/12-自主改进循环.md](docs/12-自主改进循环.md)。
 

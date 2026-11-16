@@ -13,7 +13,7 @@
 - [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
 - [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
-- [ ] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
+- [x] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
 - [ ] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
 - [ ] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
 - [ ] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
@@ -25,6 +25,8 @@
 - [ ] P2 自动安装与代码签名（需要发布源与证书）
 
 ## 已完成
+
+- 2026-11-16 Autopilot CI 门禁：`.github/workflows/ci.yml` 拆成 `gate`（`node scripts/autopilot.mjs --check --gates typecheck,regression --stash-on-fail`）与 `build`（lint / i18n / build / 两条 smoke），typecheck 与 regression 只跑一遍。`--check` 现在留下证据：`.improve/gate-report.md`（进 `$GITHUB_STEP_SUMMARY`）、`.improve/gate-report.json`、每道门一份完整日志 `.improve/logs/gate-<name>.log`、`.improve/autopilot.log`，CI 用 `upload-artifact` 全部上传（`gate-report`，14 天）。门禁失败且工作树非空时 `git stash push -u -m "autopilot gate failed: <门名> @ <时间>"`，stash 结论（成功/未开启/门禁通过/树本来干净/失败）写进报告且不改失败结论；未知门名与「没跑到」的门都算失败，不静默通过。纯逻辑抽到 `lib/ci/gate-report.ts`（门名归一化防路径穿越、日志裁剪、skipped 判定、stash 策略、markdown/JSON 渲染、退出码）。验证：regression 新增 1 组（56 条断言）；仓库内跑 `--check --gates typecheck,regression --stash-on-fail` → 退出 0、报告 `not needed (gate passed)`、`git stash list` 为空；在临时 git 仓库（脏树 + `--gates bogus`）跑同一条 → 退出 1、`git stash list` 出现 `autopilot gate failed: bogus @ 2026-11-16 12:47:02`、工作树被清空、报告记 `working tree stashed: stash@{0} (02cccca)`；tsc + eslint(0 problems) + i18n(0 missing / 0 hardcoded) + build 通过。
 
 - 2026-11-16 Agent 工具结果卡片：`web_search` 命中列表与 `inspect_artifact` 报告在对话流里折叠展开。纯逻辑 `lib/agent/tool-cards.ts`（URL 只放行 http(s)、hit/snippet/结构/指示器/字符串逐个裁剪、无效 sha256/md5 丢弃、`isToolCard` 读回校验、`formatBytes`）；`ToolOutcome.card` 由工具层构建，`AgentLogEntry.card` 随会话持久化且 `persistSessions`/`syncChatSession` 只保留最新 12 张（防配额），坏卡片或旧会话退化为原来的一行回执；界面 `components/agent/chat/tool-card.tsx` + `LogRow` 折叠头（查询/格式/熵/成功率），sha256·md5 一键复制，外链 `target=_blank rel=noopener noreferrer`。验证：regression 新增 1 组（25 条断言：协议过滤、host 归一、字节格式、裁剪上限、stringTotal、哈希校验、JSON 往返与守卫）；`scripts/e2e-tool-cards.mjs` 在真实 dev 注入带卡片的完成态会话 → 两张卡片折叠/展开、命中链接属性、报告字段、sha256 复制回读、坏卡片降级、localStorage 落盘；截图 `docs/checks/263-agent-tool-cards.png`；tsc + eslint + i18n(0 missing / 0 hardcoded) + build 通过。
 - 2026-11-16 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` —— API 段覆盖发送、60s 冷却（429 + Retry-After）、错误码递减、验证码注册、验证码登录、重置密码、重置后旧会话失效；浏览器段覆盖「邮箱验证码」页签、发送按钮、本地码提示、错误内联提示；`AETHER_EMAIL_ECHO=1` 下不实际发信。

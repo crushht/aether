@@ -17,7 +17,8 @@
  *   node scripts/autopilot.mjs --once
  *   node scripts/autopilot.mjs --rounds 3 --gates typecheck,regression
  *   node scripts/autopilot.mjs --until-dry --push
- *   node scripts/autopilot.mjs --check            # gates only
+ *   node scripts/autopilot.mjs --check            # gates only — the PR gate
+ *   node scripts/autopilot.mjs --check --stash-on-fail   # …and park a red tree
  *   node scripts/autopilot.mjs --seed             # promote gaps into NEXT.md
  *   node scripts/autopilot.mjs --dry-run --once
  *   node scripts/autopilot.mjs --once --agent-cmd "claude -p \\"$(cat {{promptFile}})\\""
@@ -26,6 +27,13 @@
  * Safety rails: a probe before round one (a silent agent is a hard stop, not a
  * green round), a no-change check after every round, gates before any commit,
  * and a lock so two loops never edit one tree.
+ *
+ * `--check` is the CI half of the loop: it runs the gates, writes
+ * `.improve/gate-report.json` + `.improve/gate-report.md` (the GitHub step
+ * summary reads the markdown), keeps one full log per gate under
+ * `.improve/logs/`, and — with `--stash-on-fail` — parks a red working tree in
+ * `git stash` so the next run starts clean. The decisions it makes are pure
+ * functions in `lib/ci/gate-report.ts`; `scripts/regression.mjs` tests them.
  */
 import { spawn } from 'node:child_process';
 import {
@@ -49,6 +57,9 @@ const paths = {
   log: path.join(root, '.improve', 'autopilot.log'),
   lock: path.join(root, '.improve', 'autopilot.lock'),
   regression: path.join(root, 'scripts', 'regression.mjs'),
+  reports: path.join(root, '.improve', 'gate-report.md'),
+  reportJson: path.join(root, '.improve', 'gate-report.json'),
+  gateLogs: path.join(root, '.improve', 'logs'),
 };
 
 const argv = process.argv.slice(2);
@@ -221,23 +232,134 @@ const GATES = {
   i18n: { label: 'i18n', run: () => runShell('npm run i18n', { timeoutMs: 5 * 60_000 }) },
 };
 
-async function gates(names) {
+async function gates(names, { logDir = paths.gateLogs } = {}) {
   const results = [];
+  const logs = [];
   for (const name of names) {
     const gate = GATES[name];
     if (!gate) {
+      console.error(`· gate ${name}: unknown (known: ${Object.keys(GATES).join(', ')})`);
+      log(`gate ${name}: unknown`);
       results.push({ name, ok: false, code: 2, tail: `unknown gate: ${name}` });
       continue;
     }
     process.stdout.write(`· gate ${gate.label} … `);
     const result = await gate.run();
-    const tail = result.output.trim().split('\n').slice(-12).join('\n');
-    process.stdout.write(result.code === 0 ? 'ok\n' : `FAILED (${result.code})\n`);
+    const ok = result.code === 0;
+    process.stdout.write(ok ? 'ok\n' : `FAILED (${result.code})\n`);
     log(`gate ${gate.label}: exit ${result.code}`);
-    results.push({ name: gate.label, ok: result.code === 0, code: result.code, tail });
-    if (result.code !== 0) break;
+    const ref = writeGateLog(gate.label, result.output ?? '', logDir);
+    if (ref) logs.push(ref);
+    results.push({ name: gate.label, ok, code: result.code, tail: lastLines(result.output) });
+    // A red gate ends the run: later gates would only bury the first failure.
+    if (!ok) break;
   }
-  return results;
+  return { results, logs };
+}
+
+/** Keep the whole gate output on disk; failures are read after the fact. */
+function writeGateLog(name, output, logDir) {
+  if (!output.trim()) return null;
+  try {
+    mkdirSync(logDir, { recursive: true });
+    const file = path.join(logDir, `gate-${safeName(name)}.log`);
+    writeFileSync(file, output, 'utf8');
+    return {
+      name,
+      file: path.relative(root, file).replaceAll('\\', '/'),
+      bytes: Buffer.byteLength(output, 'utf8'),
+    };
+  } catch (error) {
+    log(`gate log ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/** A gate label is a filename and a report row: keep it to a dull alphabet. */
+const safeName = (name) =>
+  String(name ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 40) || 'gate';
+
+/** What the console and `.improve` state get: the last few lines, no more. */
+function lastLines(output, limit = 12) {
+  const text = String(output ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/^\n+/, '')
+    .trimEnd();
+  if (!text.trim()) return '';
+  return text.split('\n').slice(-limit).join('\n');
+}
+
+/* ------------------------------------------------------------ gate reports */
+
+let gateModule = null;
+
+/**
+ * `lib/ci/gate-report.ts` holds every decision the PR gate makes, and
+ * `scripts/regression.mjs` tests it — so the driver loads it the same way,
+ * through the TypeScript compiler's transpile (no build step, no loader).
+ * The module is not optional: the typecheck gate needs `typescript` anyway.
+ */
+async function loadGateModule() {
+  if (gateModule) return gateModule;
+  try {
+    const ts = (await import('typescript')).default;
+    const source = readFileSync(path.join(root, 'lib', 'ci', 'gate-report.ts'), 'utf8');
+    const { outputText } = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    });
+    const loaded = { exports: {} };
+    new Function('module', 'exports', outputText)(loaded, loaded.exports);
+    gateModule = loaded.exports;
+    return gateModule;
+  } catch (error) {
+    log(`gate report module unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/** Branch, commit, tree state and node version — the report's header. */
+async function gateMeta() {
+  return {
+    branch: (await git('rev-parse --abbrev-ref HEAD')).output.trim(),
+    commit: (await git('rev-parse --short HEAD')).output.trim(),
+    dirty: await gitDirty(),
+    node: process.version,
+  };
+}
+
+/** Write the JSON + markdown pair CI uploads; returns the normalized report. */
+async function publishGateReport({ module, at, planned, results, logs, stash = null, meta }) {
+  const report = module.normalizeReport({
+    at,
+    planned,
+    results,
+    logs,
+    stash,
+    meta: meta ?? (await gateMeta()),
+  });
+  mkdirSync(paths.dir, { recursive: true });
+  writeFileSync(paths.reportJson, module.gateReportJson(report), 'utf8');
+  writeFileSync(paths.reports, module.gateReportMarkdown(report), 'utf8');
+  return report;
+}
+
+/** `git stash push -u` with a message that still reads well in `stash list`. */
+async function stashTree(failed, at = new Date().toISOString()) {
+  const module = await loadGateModule();
+  const message = module
+    ? module.stashMessage({ failed, at })
+    : `autopilot gate failed: ${safeName(failed)} @ ${at}`;
+  const result = await git(`stash push -u -m ${JSON.stringify(message)}`);
+  if (result.code !== 0) {
+    return { ok: false, message, ref: '', detail: result.output.trim().split('\n').slice(-3).join(' ') };
+  }
+  const hash = (await git('rev-parse --short "stash@{0}"')).output.trim();
+  return { ok: true, message, ref: hash ? `stash@{0} (${hash})` : 'stash@{0}', detail: '' };
 }
 
 /* --------------------------------------------------------------------- git */
@@ -500,19 +622,92 @@ function lock() {
   });
 }
 
+/**
+ * The CI half of the loop: run the gates, publish the evidence, and — when
+ * asked — park a red working tree. Exit 0 only for a fully green run; a
+ * planned gate that never ran is not a pass.
+ */
+async function runCheck() {
+  const module = await loadGateModule();
+  if (!module) {
+    console.error(
+      [
+        'The gate report module could not be loaded, so this run cannot be reported honestly.',
+        'It lives in lib/ci/gate-report.ts and is read through the TypeScript compiler:',
+        '  npm ci   # installs typescript, which the typecheck gate needs anyway',
+      ].join('\n'),
+    );
+    process.exitCode = 2;
+    return;
+  }
+
+  const selection = module.parseGates(value('--gates', DEFAULTS.gates), DEFAULTS.gates.split(','));
+  const at = new Date().toISOString();
+  if (selection.unknown.length) {
+    console.error(`unknown gate(s): ${selection.unknown.join(', ')} — known: ${module.KNOWN_GATES.join(', ')}`);
+  }
+
+  const { results, logs } = await gates(selection.planned);
+  const summary = module.summarizeGates(selection.planned, results);
+  const meta = await gateMeta();
+
+  // Stashed only when it can help: a green gate or a clean tree has nothing to
+  // park, and CI is normally clean — the report says which case it was.
+  const plan = module.stashPlan({ enabled: has('--stash-on-fail'), failed: !summary.ok, dirty: meta.dirty });
+  let stash = { attempted: false, created: false, reason: plan.reason, ref: '', message: '' };
+  if (plan.run) {
+    const failedName = summary.failed[0]?.name ?? selection.planned[0] ?? 'gate';
+    const stashed = await stashTree(failedName, at);
+    stash = {
+      attempted: true,
+      created: stashed.ok,
+      reason: stashed.ok ? 'ok' : 'failed',
+      ref: stashed.ref,
+      message: stashed.message,
+    };
+    console.log(stashed.ok ? `· stashed the failing tree as ${stashed.ref}` : `· stash failed: ${stashed.detail}`);
+    log(`stash on fail: ${stashed.ok ? stashed.ref : `failed (${stashed.detail})`}`);
+  }
+
+  const report = await publishGateReport({
+    module,
+    at,
+    planned: selection.planned,
+    results,
+    logs,
+    stash,
+    meta,
+  });
+  saveState({ lastGate: { at, ok: report.summary.ok, results: report.results, stash: report.stash } });
+
+  const rowOf = (name) => report.results.find((row) => row.name === name);
+  console.log(
+    `· gates: ${selection.planned
+      .map((name) => {
+        const row = rowOf(name);
+        return `${name} ${row ? (row.ok ? 'pass' : `fail(${row.code})`) : 'not run'}`;
+      })
+      .join(' · ')}`,
+  );
+  if (report.logs.length) console.log(`· logs: ${report.logs.map((entry) => entry.file).join(', ')}`);
+  console.log(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
+  log(`check: ${report.summary.ok ? 'pass' : 'fail'}`);
+  process.exitCode = module.exitCodeFor(report);
+}
+
 if (has('--status')) {
   await status();
 } else if (has('--seed')) {
   const seeded = seed(num('--seed-count', DEFAULTS.seedCount));
   console.log(seeded.length ? `seeded:\n- ${seeded.join('\n- ')}` : 'no candidates to seed');
 } else if (has('--check')) {
-  const names = value('--gates', DEFAULTS.gates).split(',').map((name) => name.trim()).filter(Boolean);
-  const results = await gates(names);
-  saveState({ lastGate: { at: new Date().toISOString(), results } });
-  process.exitCode = results.every((result) => result.ok) ? 0 : 1;
+  await runCheck();
 } else {
   const rounds = has('--until-dry') ? Infinity : num('--rounds', DEFAULTS.rounds);
-  const gateNames = value('--gates', DEFAULTS.gates).split(',').map((name) => name.trim()).filter(Boolean);
+  const gateNames = value('--gates', DEFAULTS.gates)
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
   const doCommit = !has('--no-commit') && DEFAULTS.commit;
   const doPush = has('--push') || DEFAULTS.push;
   const dryRun = has('--dry-run');
@@ -605,16 +800,28 @@ if (has('--status')) {
       break;
     }
 
-    const results = await gates(gateNames);
+    // Keep the console tail short but the files complete: a red round in a
+    // local run leaves the same evidence a red PR does.
+    const { results, logs } = await gates(gateNames);
     const allOk = results.every((result) => result.ok);
-    saveState({ lastGate: { at: new Date().toISOString(), results }, phase: allOk ? 'gate-passed' : 'gate-failed' });
+    const module = await loadGateModule();
+    if (module) {
+      const report = await publishGateReport({ module, at: new Date().toISOString(), planned: gateNames, results, logs });
+      console.log(`· report: ${path.relative(root, paths.reports).replaceAll('\\', '/')}`);
+      log(`round gate report: ${report.summary.ok ? 'pass' : 'fail'}`);
+    }
+    saveState({ lastGate: { at: new Date().toISOString(), ok: allOk, results }, phase: allOk ? 'gate-passed' : 'gate-failed' });
     if (!allOk) {
       const failed = results.find((result) => !result.ok);
       console.error(`gate ${failed?.name} failed:\n${failed?.tail ?? ''}`);
       log(`gate failed: ${failed?.name}`);
       if (has('--revert-on-fail')) {
-        await git(`stash push -u -m "autopilot: failed round (${failed?.name ?? 'gate'})"`);
-        console.log('changes stashed so the tree stays green.');
+        const stashed = await stashTree(failed?.name ?? 'gate');
+        console.log(
+          stashed.ok
+            ? `changes stashed as ${stashed.ref} so the tree stays green.`
+            : `stash failed (${stashed.detail}); the tree is left as it was.`,
+        );
       }
       process.exitCode = 1;
       break;

@@ -6,9 +6,8 @@
 
 <!-- 贴命令与结果，例如： -->
 <!--
-- npm run typecheck ✅
+- npm run autopilot:check ✅ (typecheck + regression，报告在 .improve/gate-report.md)
 - npm run lint ✅ (0 problems)
-- npm test ✅ (32)
 - npm run i18n ✅ (0 missing / 0 hardcoded)
 - node scripts/e2e-xxx.mjs ✅
 -->
@@ -28,6 +27,7 @@
 ## 检查清单
 
 - [ ] 一个 PR 只做一件事
+- [ ] `ci / gate`（typecheck + regression）通过；失败时先看 `.improve/gate-report.md` 与 `gate-report` artifact 里的完整日志
 - [ ] 文案走 `t('English key')`，中文已加到 `lib/locales/zh.ts`
 - [ ] 新逻辑有回归断言或 e2e 覆盖
 - [ ] 没提交 `.data*`、`.ci-data`、`.e2e-data`、密钥或个人数据

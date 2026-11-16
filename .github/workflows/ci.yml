@@ -6,6 +6,58 @@ on:
   pull_request:
 
 jobs:
+  # The PR gate. One command, the same one the loop runs locally:
+  #   node scripts/autopilot.mjs --check --gates typecheck,regression --stash-on-fail
+  # It writes .improve/gate-report.json + .improve/gate-report.md (the markdown is
+  # the step summary) and one full log per gate under .improve/logs/. A failing
+  # working tree is parked in `git stash` so a retry starts from a clean tree;
+  # when nothing changed there is nothing to park and the report says so.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `git stash` creates a commit, which needs a committer identity
+      - name: git identity
+        run: |
+          git config user.name "aether-ci"
+          git config user.email "ci@aether.invalid"
+
+      - name: autopilot --check (typecheck + regression)
+        run: node scripts/autopilot.mjs --check --gates typecheck,regression --stash-on-fail
+
+      # Always: the report is worth more on a red run than on a green one.
+      - name: gate summary
+        if: always()
+        run: |
+          if [ -f .improve/gate-report.md ]; then
+            cat .improve/gate-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no gate report was written" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-report
+          path: |
+            .improve/gate-report.md
+            .improve/gate-report.json
+            .improve/logs/*.log
+            .improve/autopilot.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Everything the gate does not cover: style, translations, the production
+  # build and the flows that only break in a browser.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -18,14 +70,8 @@ jobs:
 
       - run: npm ci
 
-      - name: typecheck
-        run: npm run typecheck
-
       - name: lint
         run: npm run lint
-
-      - name: regression
-        run: npm test
 
       - name: translations
         run: npm run i18n

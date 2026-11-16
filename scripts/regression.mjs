@@ -916,6 +916,101 @@ async function run() {
   assert.equal(cards.isToolCard(null), false);
   console.log('PASS tool cards: URL/hash validation, clipping, byte formatting and the persistence guard');
 
+  // The PR gate: which gates were asked for, what a run means, whether a red
+  // tree gets parked, and what CI uploads. All decisions, no I/O.
+  const gate = await loadTs(path.resolve('lib/ci/gate-report.ts'));
+  assert.deepEqual(gate.parseGates('typecheck, Regression ,,build').planned, ['typecheck', 'regression', 'build']);
+  assert.deepEqual(gate.parseGates('typecheck,typecheck').planned, ['typecheck'], 'duplicates collapse');
+  assert.deepEqual(gate.parseGates('').planned, ['typecheck', 'regression'], 'an empty list falls back to the PR default');
+  assert.deepEqual(gate.parseGates('  ').planned, ['typecheck', 'regression']);
+  assert.deepEqual(gate.parseGates('nope,typecheck').unknown, ['nope'], 'a typo is reported, never silently dropped');
+  assert.deepEqual(gate.parseGates('../../etc/passwd').planned, ['etc-passwd'], 'a gate name cannot walk out of the log dir');
+  assert.deepEqual(gate.parseGates('Build; rm -rf /').planned, ['build-rm-rf'], 'shell punctuation is folded away');
+  assert.equal(gate.safeGateName(''), 'gate');
+  assert.equal(gate.safeGateName(null), 'gate');
+  assert.equal(gate.safeGateName('  TYPE  '), 'type');
+  assert.ok(gate.KNOWN_GATES.includes('regression'));
+
+  const noise = ['\u001b[31mred\u001b[0m', '\u0000null', ...Array.from({ length: 20 }, (_, i) => `line ${i}`)].join('\n');
+  const tail = gate.tailOf(`\n\n${noise}\n\n`);
+  assert.equal(tail.split('\n').length, gate.GATE_TAIL_LINES, 'only the last lines survive');
+  assert.ok(tail.endsWith('line 19'));
+  assert.ok(!tail.includes('\u001b') && !tail.includes('\u0000'), 'colour codes and NULs are stripped');
+  assert.equal(gate.tailOf(''), '');
+  assert.equal(gate.tailOf(undefined), '');
+  assert.equal(gate.tailOf('x'.repeat(gate.GATE_TAIL_CHARS + 500)).length, gate.GATE_TAIL_CHARS + 3, 'a huge line is clipped');
+
+  const failedRun = gate.summarizeGates(['typecheck', 'regression', 'build'], [
+    { name: 'typecheck', ok: false, code: 2, tail: 'error TS2322: nope' },
+  ]);
+  assert.equal(failedRun.ok, false);
+  assert.deepEqual(failedRun.failed.map((row) => row.name), ['typecheck']);
+  assert.deepEqual(failedRun.skipped, ['regression', 'build'], 'a gate that never ran is not a pass');
+  assert.equal(gate.exitCodeFor({ summary: failedRun }), 1);
+  const green = gate.summarizeGates(['typecheck', 'regression'], [
+    { name: 'typecheck', ok: true },
+    { name: 'regression', ok: true },
+  ]);
+  assert.equal(green.ok, true);
+  assert.deepEqual(green.passed, ['typecheck', 'regression']);
+  assert.equal(gate.exitCodeFor({ summary: green }), 0);
+  assert.equal(gate.exitCodeFor(null), 1, 'no report is never a pass');
+  assert.equal(gate.summarizeGates([], []).ok, false, 'an empty gate list does not pass by default');
+  const extra = gate.summarizeGates(['typecheck'], [{ name: 'lint', ok: true }]);
+  assert.equal(extra.extra.length, 1);
+  assert.equal(extra.ok, false, 'an unplanned result cannot make a planned gate green');
+
+  assert.deepEqual(gate.normalizeGateResults([null, 3, { name: '' }, { name: '../../../x', ok: true }, { name: 'tdd', ok: true }]).map((row) => row.name), ['x', 'tdd']);
+  const normalized = gate.normalizeGateResults([{ name: 'typecheck', ok: false, code: 'x', tail: 'boom' }, { name: 'typecheck', ok: false }]);
+  assert.equal(normalized.length, 1, 'a repeated gate keeps its first result');
+  assert.equal(normalized[0].code, 1, 'a non-numeric exit code on a failure reads as 1');
+  assert.equal(normalized[0].tail, 'boom');
+  assert.deepEqual(gate.normalizeGateResults('nope'), []);
+
+  assert.deepEqual(gate.stashPlan({ enabled: true, failed: true, dirty: true }), { run: true, reason: 'ok' });
+  assert.deepEqual(gate.stashPlan({ enabled: false, failed: true, dirty: true }), { run: false, reason: 'disabled' });
+  assert.deepEqual(gate.stashPlan({ enabled: true, failed: false, dirty: true }), { run: false, reason: 'not-failed' });
+  assert.deepEqual(gate.stashPlan({ enabled: true, failed: true, dirty: false }), { run: false, reason: 'clean-tree' });
+  assert.equal(gate.stashMessage({ failed: 'typecheck', at: '2026-11-16T10:20:30.123Z' }), 'autopilot gate failed: typecheck @ 2026-11-16 10:20:30');
+  assert.equal(gate.stashMessage({}), 'autopilot gate failed: gate @ unknown time');
+  assert.equal(gate.normalizeStamp('2026-11-16T10:20:30Z'), '2026-11-16 10:20:30');
+  assert.equal(gate.normalizeStamp(''), 'unknown time');
+
+  const redReport = gate.normalizeReport({
+    at: '2026-11-16T10:20:30.123Z',
+    planned: ['typecheck', 'regression'],
+    results: [{ name: 'typecheck', ok: false, code: 2, tail: 'error TS2322: broken\nts(1,2)\n```' }],
+    logs: [{ name: 'typecheck', file: '.improve\\logs\\gate-typecheck.log', bytes: 42 }, { name: 'x', file: '  ' }],
+    stash: { attempted: true, created: true, reason: 'ok', ref: 'stash@{0} (abc1234)', message: 'autopilot gate failed: typecheck @ 2026-11-16 10:20:30' },
+    meta: { branch: 'main', commit: 'abc1234', dirty: true, node: 'v22.0.0' },
+  });
+  assert.equal(redReport.version, 1);
+  assert.equal(redReport.summary.ok, false);
+  assert.deepEqual(redReport.logs, [{ name: 'typecheck', file: '.improve/logs/gate-typecheck.log', bytes: 42 }]);
+  const redMarkdown = gate.gateReportMarkdown(redReport);
+  assert.ok(redMarkdown.startsWith('## autopilot gate — failed'));
+  assert.ok(redMarkdown.includes('| typecheck | FAIL | 2 |'));
+  assert.ok(redMarkdown.includes('| regression | not run | — |'));
+  assert.ok(redMarkdown.includes('    error TS2322: broken'), 'the failure tail is indented, not fenced');
+  assert.ok(redMarkdown.includes('· working tree dirty'));
+  assert.ok(redMarkdown.includes('working tree stashed: `stash@{0} (abc1234)`'));
+  assert.ok(redMarkdown.includes('`.improve/logs/gate-typecheck.log` (42 bytes)'));
+  const greenMarkdown = gate.gateReportMarkdown(
+    gate.normalizeReport({
+      at: '2026-11-16T10:20:30Z',
+      planned: ['typecheck'],
+      results: [{ name: 'typecheck', ok: true, code: 0 }],
+      stash: { attempted: false, created: false, reason: 'not-failed', ref: '', message: '' },
+    }),
+  );
+  assert.ok(greenMarkdown.startsWith('## autopilot gate — passed'));
+  assert.ok(greenMarkdown.includes('not needed (gate passed)'));
+  assert.ok(!greenMarkdown.includes('### typecheck'), 'a green run has no failure section');
+  const roundTrip = JSON.parse(gate.gateReportJson(redReport));
+  assert.deepEqual(roundTrip, redReport, 'the uploaded JSON is the report');
+  assert.equal(gate.normalizeReport({ planned: ['typecheck'] }).summary.ok, false, 'a missing result is not a pass');
+  console.log('PASS gate report: gate parsing, skipped vs failed, stash policy, artifact JSON and the CI summary');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 
