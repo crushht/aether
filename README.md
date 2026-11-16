@@ -202,4 +202,4 @@ npm run typecheck && npm run lint && npm test && npm run i18n && npm run build
 
 ## 许可
 
-[MIT](LICENSE)
+[MIT](LICENSE)。字体与独立实现声明见 [NOTICE.md](NOTICE.md)。
