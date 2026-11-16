@@ -11,7 +11,7 @@
 ## 待办
 
 - [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
-- [ ] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
+- [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [ ] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
 - [ ] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
 - [ ] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
@@ -26,6 +26,7 @@
 
 ## 已完成
 
+- 2026-11-16 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` —— API 段覆盖发送、60s 冷却（429 + Retry-After）、错误码递减、验证码注册、验证码登录、重置密码、重置后旧会话失效；浏览器段覆盖「邮箱验证码」页签、发送按钮、本地码提示、错误内联提示；`AETHER_EMAIL_ECHO=1` 下不实际发信。
 - 2026-11-16 邮件服务设置页：新增设置 → 邮件面板（主机/端口/账号/授权码/发件人、TLS 两档、QQ/163/Gmail/Outlook 预设）；授权码经 `encryptSecret`（AES-256-GCM）存 `<数据目录>/mail.json`，接口只回 `hasPass` 与末两位。纯逻辑抽到 `lib/mail-settings.ts`（预设推断、归一、字段校验、明文仅限本机/内网、`.env.local` 解析、保存优先于环境的优先级），`lib/server/mail-settings.ts` 负责文件读写；`mailer` 改异步配置并新增 `verifyMail`；新增 `GET/PUT/POST/DELETE /api/settings/mail`（测试连接、发送测试邮件、清除回退，写操作仅 owner，限流）。保存后 `/api/auth` 的 `emailCode.available`/`source` 无需重启即时变化。验证：`scripts/e2e-mail-settings.mjs`（本地假 SMTP 中继，含 AUTH LOGIN + DATA 断言、保存即生效、授权码不回显、502 拒绝、浏览器面板/测试/报错、清除回退）通过；截图 `docs/checks/262-mail-settings.png`；regression 新增 1 组（预设/归一/字段错误/TLS 提示/环境回退/优先级）；tsc + lint + i18n + build 通过。
 - 2026-11-16 邮箱验证码登录/注册：SMTP 客户端（node:tls，AUTH LOGIN/PLAIN、STARTTLS）、六位码哈希存储（10 分钟、5 次、60s 冷却、每小时 6 封）、登录/注册/找回密码三条路由；真实 QQ 邮箱投递 + code 登录实测通过；`lib/email-rules.ts`、`lib/smtp.ts` 回归 2 组。
 - 2026-11-16 Agent 联网：`web_search`（多引擎链：DDG→Bing→Sogou→百度→360，两套解析器）与 `fetch_url`（正文 + 外链 + 逐跳校验的重定向）；`/api/agent/web-search`、`fetch-page` 实测 cn.bing.com 命中 3 条、linear.app 抽取 40 条链接。
@@ -132,8 +133,6 @@
 - [x] P2 项目健康历史：按更新记录展示趋势
 - [x] P2 项目更新健康联动：发布更新时同步项目健康状态
 - [x] P2 通知按项目筛选：项目更新独立视图
-- [ ] P2 多工作区切换：按 workspaceId 分区数据（需要服务端数据模型与路由改造）
-- [ ] P2 自动安装与代码签名（需要发布源与证书）
 - [x] P0 会话可靠性：独立草稿、附件移除、指定轮次编辑、重新生成、分支与中断恢复
 - [x] P0 工作区可靠性：同步冲突提示、统一撤销、议题深链与浏览器历史
 - [x] P1 项目空间：项目指令、知识与会话上下文、项目内直接提问
@@ -191,7 +190,6 @@
 - [x] Agent 回答引用可点击（ENG-1 跳转）
 - [x] 会话重命名后服务端标题同步
 - [x] 空工作区引导：第一议题 / 第一项目 / 第一个工作流
-## 已完成
 
 - 2026-11-15 桌面托盘与 aether:// 深链：新增 `scripts/make-tray-icon.mjs`（手写 PNG，无依赖）生成 `desktop/tray.png`；主进程加 Tray（显示/最小化到托盘/退出、单击唤回）、单实例 `second-instance` 解析 argv 中的 `aether://`、`open-url`（macOS）、`setAsDefaultProtocolClient`（dev 带 argv）、冷启动挂起 `pendingDeepLink` 直到 `did-finish-load`；preload 暴露 `onDeepLink`；新增 `components/shell/deep-links.tsx` 订阅 IPC 与 `aether:deeplink` DOM 事件并打开对应议题。验证：`node --check` 两个桌面文件通过、图标渲染确认、`e2e-deeplink`（派发事件 → 抽屉标题等于目标议题；空 payload 不动作）通过；lint/i18n/build/回归(32) 通过。托盘点击属于桌面运行时，本会话只做了静态与前端验证。
 - 2026-11-15 备份恢复 diff 预览：`GET /api/workspace/backups?preview=<id>` 返回快照的议题 key / 项目名与计数；新增纯函数 `lib/backup-diff.ts`（新增/缺失/共有）与设置页“预览”按钮，展开显示 `Issues: +N / -M / K 相同`、`Projects: …` 以及前三个 key/名字；同备份再点一次收起。回归新增 6 条断言（32 项）；浏览器验收：立即备份 → 新建议题 → 预览 → 显示 `-1` 且点名该议题 → 再点收起。`scripts/e2e-backup-diff.mjs` 通过；lint/i18n/build 通过。

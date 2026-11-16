@@ -560,6 +560,14 @@ if (has('--status')) {
       }
     }
 
+    // Push per round, not once at the end: a long --until-dry run should not
+    // lose ten finished rounds to one flaky minute on the network.
+    if (doPush) {
+      const pushed = await push();
+      console.log(pushed.ok ? `pushed to origin/${pushed.branch}.` : `push failed: ${pushed.reason}`);
+      log(`push: ${pushed.ok ? 'ok' : pushed.reason}`);
+    }
+
     completed += 1;
     saveState({
       rounds: (readState().rounds ?? 0) + 1,
@@ -574,8 +582,10 @@ if (has('--status')) {
 
   if (doPush && !dryRun && !process.exitCode) {
     const pushed = await push();
-    console.log(pushed.ok ? `pushed to origin/${pushed.branch}.` : `push failed: ${pushed.reason}`);
-    if (!pushed.ok) process.exitCode = 1;
+    if (!pushed.ok) {
+      console.log(`final push failed: ${pushed.reason}`);
+      process.exitCode = 1;
+    }
   }
   if (!dryRun) saveState({ phase: 'idle' });
   console.log(`\nautopilot finished: ${completed} round(s) completed.`);
