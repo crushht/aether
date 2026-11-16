@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题
+    url: https://github.com/crushht/aether/security/advisories/new
+    about: 请走私下渠道，不要开公开 issue
+  - name: 使用与部署文档
+    url: https://github.com/crushht/aether#快速开始
+    about: 先看 README 的快速开始、接入模型与桌面版章节

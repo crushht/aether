@@ -1,6 +1,6 @@
 {
   "name": "aether",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Aether — an agent-centric workspace: Linear-level issue tracking with a bring-your-own-model agent, knowledge base and workflows.",
   "main": "desktop/main.cjs",

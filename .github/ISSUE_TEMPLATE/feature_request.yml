@@ -1,0 +1,45 @@
+name: Feature request
+description: 想要的新能力或体验改进
+title: '[feat] '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的具体场景
+      description: 描述工作流，而不是直接给方案 —— 这样更容易找到更合适的做法
+      placeholder: 我每天要过一遍「昨天别人更新的项目」，现在得一个个点进去看
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你希望的解法
+      placeholder: 收件箱里加一个「项目更新」分组，按项目折叠
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及范围
+      options:
+        - 议题 / 看板
+        - 项目 / 周期 / 路线图
+        - 收件箱 / 通知
+        - Agent（工具、审批、检索、工作流）
+        - 搜索 / 命令面板
+        - 桌面端
+        - 设置 / 账号
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你试过的替代方案
+      description: 现在怎么绕过的？为什么不够用？
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 已搜索过 issue 与 Roadmap，没有重复
+          required: true

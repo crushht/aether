@@ -16,7 +16,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![Electron](https://img.shields.io/badge/Electron-45-47848f?logo=electron)](https://www.electronjs.org)
 
-[快速开始](#快速开始) · [功能](#功能) · [Agent](#agent-能做什么) · [架构](#架构) · [路线图](#路线图) · [**下载桌面版**](https://github.com/crushht/aether/releases/latest)
+[快速开始](#快速开始) · [功能](#功能) · [Agent](#agent-能做什么) · [架构](#架构) · [路线图](#路线图) · [**下载桌面版**](https://github.com/crushht/aether/releases/latest) · [English](README.en.md)
 
 </div>
 
@@ -168,6 +168,11 @@ npm run csp:check    # CSP 违规汇总（AETHER_CSP_ENFORCE=1 可切强制）
 $env:AUTH_DISABLED='1'; $env:LAB_DATA_DIR='.e2e-data'; npm run dev
 node scripts/e2e.mjs            # 另有 70+ 个 e2e-*.mjs 覆盖各功能
 ```
+
+## 文档
+
+- [接入模型](docs/04-接入模型.md) · [部署](docs/05-部署.md) · [桌面应用](docs/06-桌面应用.md) · [产品架构](docs/07-Aether产品架构.md)
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)；贡献方式：[CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 键盘
 

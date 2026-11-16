@@ -31,11 +31,7 @@ win:
     - target: portable
       arch: [x64]
   icon: build/icon.ico
-  # rcedit needs winCodeSign, whose archive contains macOS symlinks that Windows
-  # refuses to create without Developer Mode or an elevated shell. Turning the
-  # resource edit off keeps local/CI packaging working; re-enable it once the
-  # release machine can create symlinks (the icon and version are cosmetic).
-  signAndEditExecutable: false
+  signAndEditExecutable: true
   artifactName: ${productName}-${version}-${arch}.${ext}
 
 nsis:
