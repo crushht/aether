@@ -131,9 +131,13 @@ assert.ok(
   'each sign-in records the browser',
 );
 assert.ok(events.every((event) => typeof event.ip === 'string' && event.ip.length > 0), 'each event records an origin');
+// Next fills X-Forwarded-For from the socket in dev, so a local call can be
+// recorded as loopback rather than the "local" placeholder. Both mean the same
+// thing here: the request came from this machine.
+const localOrigin = (ip) => ip === 'local' || /^(::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/.test(ip);
 assert.ok(
-  events.some((event) => event.ip === 'local'),
-  'a request without X-Forwarded-For is attributed to the local socket',
+  events.some((event) => localOrigin(event.ip)),
+  'a request from the local socket is attributed to loopback (or "local")',
 );
 assert.ok(events.every((event) => typeof event.at === 'string' && Number.isFinite(Date.parse(event.at))), 'every event is stamped');
 
@@ -178,8 +182,11 @@ const otherAudit = await call('/api/security/audit?limit=200', { headers: { Cook
 assert.ok(otherAudit.response.ok, 'the second account reads its own trail');
 const otherEvents = otherAudit.json.events ?? [];
 assert.ok(otherEvents.length >= 1, 'the second account has its own registration event');
+// Compare ids, not masked addresses: two accounts on the same domain mask to
+// the same string (`a***@example.invalid`), so the mask can never prove scope.
+const firstAccountId = registered.json.user.id;
 assert.ok(
-  otherEvents.every((event) => event.actorEmail !== masked),
+  otherEvents.every((event) => event.actorId !== firstAccountId),
   "one account never sees another account's events",
 );
 assert.equal(otherAudit.json.canSeeAll, false, 'a member is scoped to their own events');
@@ -226,7 +233,7 @@ try {
   await evaluate(page, `document.querySelector('[data-auth-form]').requestSubmit()`);
 
   assert.ok(
-    await waitFor(`!document.querySelector('[data-auth-form]') && !!document.querySelector('[data-settings-tab]')`),
+    await waitFor(`!document.querySelector('[data-auth-form]') && !!document.querySelector('a[href="/inbox"]')`),
     'signing in opens the workspace',
   );
 

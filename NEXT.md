@@ -16,7 +16,7 @@
 - [x] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
 - [x] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
 - [x] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
-- [ ] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
+- [x] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
 - [ ] P2 `scripts/e2e-attachments.mjs` 复现：评论附件刷新后丢失（干净树上同样失败，先判定是测试的选择器/时序还是 `addComment` 的保存竞态，再决定修测试还是修产品）
 
 ## 阻塞（需要外部资产，不进入轮转队列）
@@ -27,6 +27,7 @@
 
 ## 已完成
 
+- 2026-11-16 安全审计流收尾：第 6 轮交的 `scripts/e2e-security-audit.mjs` 有两处是「写了没验证」——(1) 用 `data-settings-tab` 判断登录成功，这个属性在源码里不存在，改成侧栏 `a[href="/inbox"]`；(2) 用掩码地址断言「看不到别人事件」，而两个测试账号同域掩码都是 `a***@example.invalid`，改成比 `actorId`；另把「本机来源」放宽为 loopback 或 `local`（Next dev 会从 socket 填 `X-Forwarded-For`，记的是 `::ffff:127.0.0.1`）。修完 `node scripts/e2e-security-audit.mjs` 两段全过（7 kinds、掩码、拒绝徽标、筛选、限额、账号隔离），截图 `docs/checks/266-security-audit.png`。
 - 2026-11-16 附件逆向入口：议题附件卡片的 ⋯ 菜单新增「分析」，一个请求打到 `/api/agent/inspect` 并在面板里渲染同一张 `inspect` 卡片（格式/大小/熵/加壳提示、sha256·md5 一键复制、结构、备注、指示器、内嵌载荷、字符串前 N / 总数字）。纯逻辑抽到 `lib/agent/inspect-report.ts`：`structureLines`（PE 头 + 分区行、ELF、Mach-O、ZIP 目录，分区 ≤10 / 条目 ≤15 / 单行 ≤300，字段先过 `oneLine` 去控制符再裁剪，嵌套行用 `·` 前缀因为卡片会 trim 掉缩进）、`inspectCardFromResponse`（失败响应、非报告形状、无 size 无 format 一律 null）、`inspectRequestBody`（dataUrl 优先于 text，无字节返回 null —— 界面直接说「没有可分析的字节」而不再打服务端）；`lib/agent/tools.ts` 的 `inspect_artifact` 改为复用同一对函数，回执与面板不会再对同一个样本给出两种描述。界面 `components/issue/attachment-analysis.tsx`（遮罩 + Escape 关闭，且 `stopPropagation` 掉全局 Escape 快捷键，否则会把背后的议题抽屉一起关掉）+ `attachments-section.tsx` 的 ⋯ 菜单（`aria-haspopup`/`aria-expanded`、点击外部关闭）。验证：regression 新增 1 组（30 条断言：无头/垃圾字段降级、分区与条目裁剪与 `· … N more`、控制符不落屏幕、ELF/Mach-O 行、哈希校验与大小写归一、失败响应与无 size 无 format 拒绝、dataUrl 优先、无字节拒绝、名称裁剪 200）；`scripts/e2e-attachment-inspect.mjs` 在真实 dev（AUTH_DISABLED=1，端口 4321）验收 —— API 段（MZ 字节 → `format.id=mz`、sha256 与本地 `createHash` 一致、空 artifact 与「既无 base64 也无 text」各 400）+ 浏览器段（⋯ 菜单开合与外部点击关闭、文本附件报告出 command/url 指示器与内嵌 `DOS executable (MZ)`、sha256 复制值等于附件字节的哈希、Escape 只关面板不关抽屉、PNG dataURL 按字节分析出 `PNG image`、无字节附件只显示本地提示且不渲染报告）；截图 `docs/checks/265-attachment-analysis.png`；tsc + eslint(0 problems) + i18n(0 missing / 0 hardcoded) 通过。
 
 - 2026-11-16 搜索来源可配置：设置 →「网页搜索」把 `web_search` 的来源做成设置，不再只有环境变量。固定端点（自建 SearXNG 或任意 `?q=` 引擎）优先于内置链：先请求 `format=json`，实例关掉 JSON（403）时回退同一路径的 HTML 布局；没填端点就按可调优先级跑 DDG→Bing→搜狗→百度→360，引擎可上移/下移/关闭（至少留一个）。纯逻辑抽到 `lib/search-settings.ts`（端点校验：本机与内网允许 http、公网必须 https、URL 不许带凭据、粘进来的 `q=` 丢弃；SearXNG JSON 解析：只放行 http(s)、按 URL 去重、标题/摘要截断；`normalizeEngineOrder`/`moveEngine`/`toggleEngine`；`resolveSearchSettings` 保存 > 环境 > 出厂），`lib/server/search-settings.ts` 负责 `<数据目录>/search.json` 与 `withLock` 写入，`lib/server/web-search.ts` 改由 `buildProviders(settings)` 决定链路；新增 `GET/PUT/POST/DELETE /api/settings/search`（读取任何成员、写入与试跑仅 owner、试跑限流 12 次/10 分钟）与 `/api/agent/web-search` 每请求现读。验证：regression 新增 1 组（端点规则/JSON 解析/顺序与开关/env 优先级/buildProviders 共 76 条断言）；`scripts/e2e-search-settings.mjs` 用本地假 SearXNG 验收 —— API 段（试跑、保存归一化为 `http://127.0.0.1:8899/search`、保存后 `/api/agent/web-search` 立即 `source: settings`、非法端点 400 且不覆盖旧值、JSON 关闭时走 HTML、只改顺序的链模式、清除回退）+ 浏览器段（面板读到 SearXNG、引擎下移后保存生效、试跑渲染命中链接、非法端点内联报错）；截图 `docs/checks/264-search-settings.png`；tsc + eslint + i18n(0 missing / 0 hardcoded) + build 通过。
