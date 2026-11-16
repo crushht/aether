@@ -1033,6 +1033,113 @@ async function run() {
   assert.equal(cards.isToolCard(null), false);
   console.log('PASS tool cards: URL/hash validation, clipping, byte formatting and the persistence guard');
 
+  // Attachment analysis: the same `/api/agent/inspect` answer feeds the agent
+  // tool and the issue attachment menu. Structure lines are built from
+  // attacker-controlled fields, so they are sanitised and clipped here.
+  const artReport = await loadTs(path.resolve('lib/agent/inspect-report.ts'), { './tool-cards': cards });
+  assert.deepEqual(artReport.structureLines(null), []);
+  assert.deepEqual(artReport.structureLines({}), [], 'a report without headers adds no lines');
+  assert.deepEqual(artReport.structureLines({ pe: null, elf: null, zip: [] }), []);
+
+  const peLines = artReport.structureLines({
+    pe: {
+      machine: 'x64',
+      subsystem: 'console',
+      timestamp: '2024-01-02T03:04:05Z',
+      sections: Array.from({ length: 12 }, (_, index) => ({ name: `.s${index}`, rawSize: 4096, entropy: 7.3456 })),
+    },
+  });
+  assert.equal(peLines[0], 'PE x64 · console · built 2024-01-02T03:04:05Z · 12 section(s)');
+  assert.equal(peLines.length, 1 + artReport.REPORT_LIMITS.sections + 1, 'sections are capped plus a "… more" row');
+  assert.equal(peLines[1], '· .s0 raw=4096B entropy=7.35');
+  assert.equal(peLines.at(-1), `· … ${12 - artReport.REPORT_LIMITS.sections} more`);
+  const peSevered = artReport.structureLines({ pe: { sections: 'not an array' } });
+  assert.equal(peSevered[0], 'PE unknown · unknown · built unknown · 0 section(s)', 'garbage fields degrade, never throw');
+  const peDirty = artReport.structureLines({
+    pe: {
+      machine: 'x\u0000\u000764'.padEnd(300, 'M'),
+      subsystem: 'gui',
+      timestamp: 'now',
+      sections: [{ name: 'evil\u0007'.padEnd(300, 'N'), rawSize: 1 }],
+    },
+  });
+  assert.ok(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(peDirty.join('\n')), 'control characters never reach the panel');
+  assert.ok(peDirty[0].startsWith('PE x 64'), 'control characters collapse to a space, the text survives');
+  assert.ok(peDirty[0].length < 300, 'a hostile field cannot stretch the header line to the cap');
+
+  assert.deepEqual(artReport.structureLines({ elf: { bits: 64, endian: 'little', machine: 'EM_X86_64', entry: '0x401000' } }), [
+    'ELF 64-bit little EM_X86_64 entry 0x401000',
+  ]);
+  assert.deepEqual(artReport.structureLines({ macho: { bits: 64, cpu: 'arm64', filetype: 'executable' } }), [
+    'Mach-O 64-bit arm64 executable',
+  ]);
+  const zipLines = artReport.structureLines({
+    zip: Array.from({ length: 20 }, (_, index) => ({ name: `lib/${index}.dex`, size: index })),
+  });
+  assert.equal(zipLines[0], 'archive entries:');
+  assert.equal(zipLines.length, 1 + artReport.REPORT_LIMITS.entries + 1);
+  assert.equal(zipLines[1], '· lib/0.dex (0B)');
+  assert.equal(zipLines.at(-1), '· … 5 more');
+
+  const inspectResponse = {
+    ok: true,
+    hashes: { sha256: 'C'.repeat(64), sha1: 'd'.repeat(40), md5: 'E'.repeat(32) },
+    report: {
+      name: 'dropper.exe',
+      size: 8192,
+      format: { label: 'PE executable', id: 'pe', detail: 'x64 · console' },
+      entropy: 7.4,
+      packed: true,
+      pe: { machine: 'x64', subsystem: 'console', timestamp: 'now', sections: [{ name: '.text', rawSize: 4096, entropy: 7.9 }] },
+      strings: ['powershell -enc AAAA', 'VirtualAlloc'],
+      indicators: [{ kind: 'command', value: 'powershell -enc AAAA' }],
+      embedded: [{ kind: 'base64', bytes: 2048, format: 'ZIP' }],
+      notes: ['high entropy'],
+      hex: ['00000000  4d 5a'],
+    },
+  };
+  const menuCard = artReport.inspectCardFromResponse(inspectResponse);
+  assert.equal(menuCard.kind, 'inspect');
+  assert.equal(menuCard.format, 'PE executable');
+  assert.equal(menuCard.entropy, 7.4);
+  assert.equal(menuCard.packed, true);
+  assert.equal(menuCard.sha256, 'c'.repeat(64));
+  assert.equal(menuCard.md5, 'e'.repeat(32));
+  assert.deepEqual(menuCard.structure, ['PE x64 · console · built now · 1 section(s)', '· .text raw=4096B entropy=7.9']);
+  assert.equal(menuCard.stringTotal, 2);
+  assert.ok(cards.isToolCard(menuCard), 'the menu card passes the same guard the transcript uses');
+
+  assert.equal(artReport.inspectCardFromResponse(null), null);
+  assert.equal(artReport.inspectCardFromResponse('nope'), null);
+  assert.equal(artReport.inspectCardFromResponse({ ok: false, error: 'too large' }), null, 'a failed answer has no card');
+  assert.equal(artReport.inspectCardFromResponse({}), null);
+  assert.equal(artReport.inspectCardFromResponse({ report: {} }), null, 'a report with no size and no format is not a report');
+  assert.equal(artReport.inspectCardFromResponse({ report: { size: 12 } }).format, 'unknown', 'a bare report still renders');
+  assert.equal(artReport.inspectCardFromResponse({ report: { size: 12 }, hashes: { sha256: 'nope' } }).sha256, undefined);
+
+  assert.deepEqual(artReport.inspectRequestBody({ name: ' shot.png ', dataUrl: 'data:image/png;base64,AAAA', text: null }), {
+    name: 'shot.png',
+    base64: 'data:image/png;base64,AAAA',
+  });
+  assert.deepEqual(artReport.inspectRequestBody({ name: 'notes.txt', text: 'release checklist' }), {
+    name: 'notes.txt',
+    text: 'release checklist',
+  });
+  assert.deepEqual(
+    artReport.inspectRequestBody({ name: 'both', dataUrl: 'data:image/png;base64,AAAA', text: 'text' }),
+    { name: 'both', base64: 'data:image/png;base64,AAAA' },
+    'the stored bytes win over a text copy',
+  );
+  assert.equal(artReport.inspectRequestBody({ name: 'empty.txt' }), null, 'an attachment with no bytes is refused, not sent');
+  assert.equal(artReport.inspectRequestBody(null), null);
+  assert.equal(artReport.inspectRequestBody({ text: 'body' }).name, 'artifact', 'a nameless attachment still gets a label');
+  assert.equal(
+    artReport.inspectRequestBody({ name: '\u0000x'.padEnd(400, 'y'), text: 'b' }).name.length,
+    200,
+    'the name is clipped before it reaches the request',
+  );
+  console.log('PASS attachment analysis: report mapping, header lines, clipping, and the request body');
+
   // The PR gate: which gates were asked for, what a run means, whether a red
   // tree gets parked, and what CI uploads. All decisions, no I/O.
   const gate = await loadTs(path.resolve('lib/ci/gate-report.ts'));

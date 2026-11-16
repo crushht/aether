@@ -1,12 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { Download, Paperclip, X } from 'lucide-react';
+import { Download, MoreHorizontal, Paperclip, ScanSearch, X } from 'lucide-react';
 import { useData } from '@/lib/store/data';
 import { useT } from '@/lib/use-t';
 import { formatBytes } from '@/lib/attachments';
 import { downloadTextFile } from '@/lib/download';
 import type { Issue, IssueAttachment } from '@/lib/types';
+import { AttachmentAnalysis } from './attachment-analysis';
 import { AttachmentLightbox } from './attachment-lightbox';
 
 /** Files stored on the issue itself, bounded and previewable. */
@@ -15,6 +16,10 @@ export function AttachmentsSection({ issue }: { issue: Issue }) {
   const t = useT();
   const files = issue.attachments ?? [];
   const [lightbox, setLightbox] = React.useState<{ files: IssueAttachment[]; index: number } | null>(null);
+  /** the attachment whose ⋯ menu is open */
+  const [menu, setMenu] = React.useState<string | null>(null);
+  /** the attachment being triaged by `/api/agent/inspect` */
+  const [analysis, setAnalysis] = React.useState<IssueAttachment | null>(null);
   if (!files.length) return null;
 
   const openPreview = (file: IssueAttachment) => {
@@ -93,9 +98,49 @@ export function AttachmentsSection({ issue }: { issue: Issue }) {
             >
               <X size={11} strokeWidth={2} />
             </button>
+            <button
+              type="button"
+              data-attachment-menu-toggle={file.id}
+              aria-label={`${t('Attachment menu')} ${file.name}`}
+              aria-haspopup="menu"
+              aria-expanded={menu === file.id}
+              onClick={() => setMenu((current) => (current === file.id ? null : file.id))}
+              className="grid h-[20px] w-[20px] shrink-0 place-items-center rounded-full text-t4 transition-colors hover:bg-[var(--bg-active)] hover:text-t1"
+            >
+              <MoreHorizontal size={12} strokeWidth={2} />
+            </button>
+            {menu === file.id ? (
+              <>
+                <div className="fixed inset-0 z-[695]" onMouseDown={() => setMenu(null)} />
+                <div
+                  role="menu"
+                  data-attachment-menu={file.id}
+                  className="absolute right-0 top-[calc(100%-6px)] z-[700] w-[156px] rounded-r8 bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-pop)]"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') setMenu(null);
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-attachment-menu-item="analyze"
+                    onClick={() => {
+                      setMenu(null);
+                      setAnalysis(file);
+                    }}
+                    className="flex w-full items-center gap-1.5 rounded-r5 px-1.5 py-1 text-left text-[12px] text-t2 transition-colors hover:bg-[var(--bg-selected)] hover:text-t1"
+                  >
+                    <ScanSearch size={12} strokeWidth={1.9} />
+                    {t('Analyze')}
+                  </button>
+                </div>
+              </>
+            ) : null}
           </div>
         ))}
       </div>
+
+      {analysis ? <AttachmentAnalysis file={analysis} onClose={() => setAnalysis(null)} /> : null}
 
       {lightbox ? (
         <AttachmentLightbox

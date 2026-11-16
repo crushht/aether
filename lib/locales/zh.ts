@@ -1243,6 +1243,14 @@ export const zh: Record<string, string> = {
   'Strings': '字符串',
   'first {shown} of {total}': '前 {shown} / {total}',
 
+  /* -------------------------------------------------- attachment analysis */
+  'Attachment menu': '附件菜单',
+  'Analyze': '分析',
+  'Analyzing': '分析中…',
+  'Analysis failed': '分析失败。',
+  'Artifact analysis': '附件分析',
+  'This attachment carries no bytes to analyze.': '这个附件没有可分析的字节。',
+
   // Web search source (settings → Web search)
   'Web search': '网页搜索',
   'The agent reaches the web through exactly one source. A SearXNG endpoint replaces the built-in chain; the engine order decides what gets tried when no endpoint is set.':

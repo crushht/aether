@@ -5,7 +5,8 @@ import { RELATION_INVERSE, STATUSES, type Issue, type Priority, type RelationTyp
 import { useWorkspace } from './workspace';
 import { chunkText } from './search';
 import { hybridRankKnowledge } from './semantic';
-import { buildInspectCard, buildSearchCard, type ToolCard } from './tool-cards';
+import { inspectCardFromResponse, structureLines } from './inspect-report';
+import { buildSearchCard, type ToolCard } from './tool-cards';
 
 export interface ToolSpec {
   name: string;
@@ -864,40 +865,14 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       };
       if (!response.ok || !json.ok || !json.report) return fail(json.error ?? `Analysis failed (${response.status}).`);
       const report = json.report;
-      const structure: string[] = [];
-      if (report.pe) {
-        structure.push(
-          `PE ${report.pe.machine} · ${report.pe.subsystem} · built ${report.pe.timestamp} · ${report.pe.sections.length} section(s)`,
-          ...report.pe.sections
-            .slice(0, 10)
-            .map((section) => `  ${section.name || '(unnamed)'} raw=${section.rawSize}B entropy=${section.entropy}`),
-        );
-      }
-      if (report.elf) {
-        structure.push(`ELF ${report.elf.bits}-bit ${report.elf.endian} ${report.elf.machine} entry ${report.elf.entry}`);
-      }
-      if (report.macho) structure.push(`Mach-O ${report.macho.bits}-bit ${report.macho.cpu} ${report.macho.filetype}`);
-      if (report.zip?.length) {
-        structure.push('archive entries:', ...report.zip.slice(0, 15).map((entry) => `  ${entry.name} (${entry.size}B)`));
-      }
+      // Same mapping the issue attachment panel uses, so the receipt and the
+      // menu can never describe one artifact two different ways.
+      const structure = structureLines(report);
       const indicators = (report.indicators ?? []).map((item) => `- ${item.kind}: ${item.value}`).join('\n');
       const embedded = (report.embedded ?? []).map((item) => `- ${item.kind} blob → ${item.format} (${item.bytes}B)`).join('\n');
       const strings = (report.strings ?? []).slice(0, 20).join('\n');
 
-      const card = buildInspectCard({
-        name: report.name,
-        size: report.size,
-        format: report.format,
-        entropy: report.entropy,
-        packed: report.packed,
-        hashes: json.hashes,
-        structure,
-        indicators: report.indicators,
-        embedded: report.embedded,
-        notes: report.notes,
-        strings: report.strings,
-        hex: report.hex,
-      });
+      const card = inspectCardFromResponse(json) ?? undefined;
 
       return ok(
         [
