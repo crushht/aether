@@ -28,6 +28,15 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: electron-builder
         update-types: ['version-update:semver-major']
+      # Next/React majors change the app router contract; upgrade deliberately
+      - dependency-name: next
+        update-types: ['version-update:semver-major']
+      - dependency-name: react
+        update-types: ['version-update:semver-major']
+      - dependency-name: react-dom
+        update-types: ['version-update:semver-major']
+      - dependency-name: eslint-config-next
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
