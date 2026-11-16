@@ -64,7 +64,7 @@ Aether 反过来——**Agent 是主线**，它和工作区共用同一套工具
 - **按场景路由**：工作区聊天、议题面板、项目、工作流各自选 Provider 与模型
 - **工具调用**：读写议题 / 项目 / 知识 / 记忆 / 工作流，一步一句可读的说明
 - **工具结果卡片**：`web_search` 的命中列表与 `inspect_artifact` 的报告在对话流里点一下展开——标题/域名/摘要，格式/熵/结构/指示器/内嵌载荷/字符串，sha256 一键复制
-- **联网**：`web_search` 多引擎链（DuckDuckGo → Bing → 搜狗 → 百度 → 360，可用 `AETHER_SEARCH_URL` 指向 SearXNG）+ `fetch_url` 读正文与外链（重定向逐跳校验，私网地址拒绝）
+- **联网**：`web_search` 多引擎链（DuckDuckGo → Bing → 搜狗 → 百度 → 360）+ `fetch_url` 读正文与外链（重定向逐跳校验，私网地址拒绝）；来源在 **设置 → 网页搜索** 里配：引擎优先级可调，也可填一个 SearXNG 端点（先走 `format=json`，实例关掉 JSON 就回退 HTML），`AETHER_SEARCH_URL` 仍是只读回退
 - **静态逆向**：`inspect_artifact` 对附件或粘贴内容做分诊 —— 格式与 magic、PE / ELF / Mach-O 头、ZIP / APK 目录、熵（是否加壳）、ASCII 与 UTF-16 字符串、URL / IP / 命令 / API 指示器、内嵌 base64/hex 载荷、hexdump；只读，不执行样本
 - **审批**：写工具逐次确认，或「总是允许」（按账号保存在本浏览器）
 - **记忆与知识**：作用域记忆 + 关键词检索，配了向量模型就自动混合重排

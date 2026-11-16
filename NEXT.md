@@ -14,7 +14,7 @@
 - [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
 - [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
 - [x] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
-- [ ] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
+- [x] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
 - [ ] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
 - [ ] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
 
@@ -25,6 +25,8 @@
 - [ ] P2 自动安装与代码签名（需要发布源与证书）
 
 ## 已完成
+
+- 2026-11-16 搜索来源可配置：设置 →「网页搜索」把 `web_search` 的来源做成设置，不再只有环境变量。固定端点（自建 SearXNG 或任意 `?q=` 引擎）优先于内置链：先请求 `format=json`，实例关掉 JSON（403）时回退同一路径的 HTML 布局；没填端点就按可调优先级跑 DDG→Bing→搜狗→百度→360，引擎可上移/下移/关闭（至少留一个）。纯逻辑抽到 `lib/search-settings.ts`（端点校验：本机与内网允许 http、公网必须 https、URL 不许带凭据、粘进来的 `q=` 丢弃；SearXNG JSON 解析：只放行 http(s)、按 URL 去重、标题/摘要截断；`normalizeEngineOrder`/`moveEngine`/`toggleEngine`；`resolveSearchSettings` 保存 > 环境 > 出厂），`lib/server/search-settings.ts` 负责 `<数据目录>/search.json` 与 `withLock` 写入，`lib/server/web-search.ts` 改由 `buildProviders(settings)` 决定链路；新增 `GET/PUT/POST/DELETE /api/settings/search`（读取任何成员、写入与试跑仅 owner、试跑限流 12 次/10 分钟）与 `/api/agent/web-search` 每请求现读。验证：regression 新增 1 组（端点规则/JSON 解析/顺序与开关/env 优先级/buildProviders 共 76 条断言）；`scripts/e2e-search-settings.mjs` 用本地假 SearXNG 验收 —— API 段（试跑、保存归一化为 `http://127.0.0.1:8899/search`、保存后 `/api/agent/web-search` 立即 `source: settings`、非法端点 400 且不覆盖旧值、JSON 关闭时走 HTML、只改顺序的链模式、清除回退）+ 浏览器段（面板读到 SearXNG、引擎下移后保存生效、试跑渲染命中链接、非法端点内联报错）；截图 `docs/checks/264-search-settings.png`；tsc + eslint + i18n(0 missing / 0 hardcoded) + build 通过。
 
 - 2026-11-16 Autopilot CI 门禁：`.github/workflows/ci.yml` 拆成 `gate`（`node scripts/autopilot.mjs --check --gates typecheck,regression --stash-on-fail`）与 `build`（lint / i18n / build / 两条 smoke），typecheck 与 regression 只跑一遍。`--check` 现在留下证据：`.improve/gate-report.md`（进 `$GITHUB_STEP_SUMMARY`）、`.improve/gate-report.json`、每道门一份完整日志 `.improve/logs/gate-<name>.log`、`.improve/autopilot.log`，CI 用 `upload-artifact` 全部上传（`gate-report`，14 天）。门禁失败且工作树非空时 `git stash push -u -m "autopilot gate failed: <门名> @ <时间>"`，stash 结论（成功/未开启/门禁通过/树本来干净/失败）写进报告且不改失败结论；未知门名与「没跑到」的门都算失败，不静默通过。纯逻辑抽到 `lib/ci/gate-report.ts`（门名归一化防路径穿越、日志裁剪、skipped 判定、stash 策略、markdown/JSON 渲染、退出码）。验证：regression 新增 1 组（56 条断言）；仓库内跑 `--check --gates typecheck,regression --stash-on-fail` → 退出 0、报告 `not needed (gate passed)`、`git stash list` 为空；在临时 git 仓库（脏树 + `--gates bogus`）跑同一条 → 退出 1、`git stash list` 出现 `autopilot gate failed: bogus @ 2026-11-16 12:47:02`、工作树被清空、报告记 `working tree stashed: stash@{0} (02cccca)`；tsc + eslint(0 problems) + i18n(0 missing / 0 hardcoded) + build 通过。
 

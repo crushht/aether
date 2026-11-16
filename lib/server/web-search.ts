@@ -1,4 +1,13 @@
-import { safePageUrl } from '@/lib/agent/guard';
+import {
+  buildSearchUrl,
+  checkSearchEndpoint,
+  engineById,
+  looksLikeJsonBody,
+  parseSearxngPayload,
+  searxngJsonUrl,
+  SEARCH_ENGINES,
+  type SearchSettings,
+} from '@/lib/search-settings';
 
 /**
  * Web search without an API key.
@@ -6,14 +15,20 @@ import { safePageUrl } from '@/lib/agent/guard';
  * Aether runs on private machines, and which engine answers depends on the
  * network: DuckDuckGo and Bing in some places, Baidu/Sogou/360 in others. So
  * this tries a short chain of HTML endpoints and parses the first one that
- * returns results. Two parsers cover the layouts in use:
+ * returns results. Three parsers cover the layouts in use:
  *
  *   - DuckDuckGo's `result__a` / `result__snippet` markup
  *   - a generic `<h2|h3><a href>title</a></h3>` + following text, which is what
  *     Baidu, Sogou, 360 and Bing all emit
+ *   - SearXNG's `{ results: [...] }` JSON, which needs no layout guessing at all
  *
- * `AETHER_SEARCH_URL` pins a single endpoint (a self-hosted proxy, SearXNG…).
- * Everything is a pure function with its own tests.
+ * Which source runs is a setting now, not only an environment variable: the
+ * chosen endpoint and the engine order arrive as `SearchSettings` from
+ * `lib/server/search-settings.ts`. A pinned endpoint replaces the chain (a
+ * self-hosted SearXNG should not leak queries back to the public engines);
+ * otherwise the configured engines are tried in order.
+ *
+ * Everything except `fetch` is a pure function with its own tests.
  */
 
 export interface SearchHit {
@@ -155,66 +170,85 @@ interface Provider {
   id: string;
   label: string;
   url: (query: string) => string;
+  /** A SearXNG instance also answers `format=json` on the same path. */
+  jsonUrl?: string;
 }
-
-const PROVIDERS: Provider[] = [
-  {
-    id: 'duckduckgo',
-    label: 'duckduckgo.com',
-    url: (query) => `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-  },
-  {
-    id: 'bing',
-    label: 'cn.bing.com',
-    url: (query) => `https://cn.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-CN`,
-  },
-  {
-    id: 'sogou',
-    label: 'sogou.com',
-    url: (query) => `https://www.sogou.com/web?query=${encodeURIComponent(query)}`,
-  },
-  {
-    id: 'baidu',
-    label: 'baidu.com',
-    url: (query) => `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`,
-  },
-  {
-    id: '360',
-    label: 'so.com',
-    url: (query) => `https://www.so.com/s?q=${encodeURIComponent(query)}`,
-  },
-];
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
-function providers(): Provider[] {
-  const pinned = (process.env.AETHER_SEARCH_URL ?? '').trim();
-  if (!pinned) return PROVIDERS;
-  return [{ id: 'custom', label: new URL(safePageUrl(pinned)).hostname, url: (query) => {
-    const base = safePageUrl(pinned);
-    return `${base}${base.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}`;
-  } }];
+/**
+ * The chain to try, in the order the operator picked. A pinned endpoint wins
+ * over the chain entirely; an unparsable endpoint falls back to the chain
+ * instead of failing the search.
+ */
+export function buildProviders(settings: Partial<SearchSettings> = {}): Provider[] {
+  const endpoint = checkSearchEndpoint(settings.url ?? '');
+  if (endpoint.ok && endpoint.url) {
+    return [
+      {
+        id: endpoint.kind === 'searxng' ? 'searxng' : 'custom',
+        label: endpoint.host || endpoint.url,
+        url: (query) => buildSearchUrl(endpoint.url, query),
+        jsonUrl: searxngJsonUrl(endpoint.url),
+      },
+    ];
+  }
+
+  const order = Array.isArray(settings.engines) && settings.engines.length ? settings.engines : SEARCH_ENGINES.map((engine) => engine.id);
+  const chain: Provider[] = [];
+  for (const id of order) {
+    const engine = engineById(id);
+    if (engine) chain.push({ id: engine.id, label: engine.label, url: engine.url });
+  }
+  if (chain.length) return chain;
+  return SEARCH_ENGINES.map((engine) => ({ id: engine.id, label: engine.label, url: engine.url }));
 }
 
-async function askOne(provider: Provider, query: string, limit: number): Promise<SearchHit[]> {
-  const response = await fetch(provider.url(query), {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8' },
+async function readBody(provider: Provider, url: string, accept: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT, Accept: accept, 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8' },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`${provider.label} answered ${response.status}.`);
-  const html = await response.text();
-  const fromDdg = parseDuckDuckGo(html, limit);
-  return fromDdg.length ? fromDdg : parseHeadingResults(html, provider.url(query), limit);
+  return response.text();
 }
 
-export async function searchWeb(query: string, limit = 6): Promise<SearchResult> {
+function parseBody(body: string, baseUrl: string, limit: number): SearchHit[] {
+  if (looksLikeJsonBody(body)) {
+    const fromJson = parseSearxngPayload(body, limit);
+    if (fromJson.length) return fromJson;
+  }
+  const fromDdg = parseDuckDuckGo(body, limit);
+  if (fromDdg.length) return fromDdg;
+  return parseHeadingResults(body, baseUrl, limit);
+}
+
+async function askOne(provider: Provider, query: string, limit: number): Promise<SearchHit[]> {
+  if (provider.jsonUrl) {
+    // Ask for JSON first: it is the only format with no layout to guess at.
+    // A SearXNG with `format=json` disabled answers 403 (or HTML), so the HTML
+    // probe below is the normal second attempt, not an error path.
+    try {
+      const jsonHits = parseSearxngPayload(await readBody(provider, provider.jsonUrl, 'application/json'), limit);
+      if (jsonHits.length) return jsonHits;
+    } catch {
+      /* fall through to HTML */
+    }
+    const htmlUrl = provider.url(query);
+    return parseBody(await readBody(provider, htmlUrl, 'text/html,application/xhtml+xml'), htmlUrl, limit);
+  }
+  const url = provider.url(query);
+  return parseBody(await readBody(provider, url, 'text/html,application/xhtml+xml'), url, limit);
+}
+
+export async function searchWeb(query: string, limit = 6, settings: Partial<SearchSettings> = {}): Promise<SearchResult> {
   const clean = query.replace(/\s+/g, ' ').trim().slice(0, 200);
   if (!clean) throw new Error('A search needs a query.');
   const want = Math.min(Math.max(limit, 1), 10);
 
   const failures: string[] = [];
-  for (const provider of providers()) {
+  for (const provider of buildProviders(settings)) {
     try {
       const results = await askOne(provider, clean, want);
       if (results.length) return { query: clean, provider: provider.label, results };

@@ -739,8 +739,10 @@ async function run() {
   console.log('PASS mail settings: presets, normalising, field errors, TLS notices, env fallback and precedence');
 
   // Web search parsing (DuckDuckGo html + lite layouts).
+  const searchSettings = await loadTs(path.resolve('lib/search-settings.ts'));
   const webSearch = await loadTs(path.resolve('lib/server/web-search.ts'), {
     '@/lib/agent/guard': { safePageUrl: (value) => String(value) },
+    '@/lib/search-settings': searchSettings,
   });
   assert.equal(webSearch.decodeHtml('A &amp; B &#39;c&#x27;'), "A & B 'c'");
   assert.equal(
@@ -778,6 +780,121 @@ async function run() {
     'This is a reasonably long summary sentence that keeps going',
   );
   console.log('PASS web search: redirect unwrap, entity decoding, html/lite/heading layouts, snippet trim');
+
+  // Search source: endpoint rules, SearXNG JSON, engine order, env precedence.
+  assert.equal(searchSettings.engineIds().length, 5);
+  assert.deepEqual(searchSettings.engineIds().slice(0, 3), ['duckduckgo', 'bing', 'sogou']);
+  assert.equal(searchSettings.checkSearchEndpoint('').kind, 'builtin');
+  assert.equal(searchSettings.checkSearchEndpoint(undefined).ok, true, 'no value means the built-in chain');
+  const bareHost = searchSettings.checkSearchEndpoint('searx.example.com');
+  assert.equal(bareHost.url, 'https://searx.example.com/', 'a bare host gets https');
+  assert.equal(bareHost.kind, 'searxng');
+  assert.equal(bareHost.host, 'searx.example.com');
+  const localEndpoint = searchSettings.checkSearchEndpoint('127.0.0.1:8888');
+  assert.equal(localEndpoint.url, 'http://127.0.0.1:8888/', 'a local endpoint may speak plain http');
+  const lanEndpoint = searchSettings.checkSearchEndpoint('http://192.168.1.5:8080/search');
+  assert.equal(lanEndpoint.ok, true);
+  assert.equal(lanEndpoint.kind, 'searxng', 'a /search path reads as SearXNG');
+  assert.equal(lanEndpoint.host, '192.168.1.5:8080');
+  assert.equal(searchSettings.checkSearchEndpoint('ftp://nope').ok, false, 'only http(s) answers a search');
+  assert.match(searchSettings.checkSearchEndpoint('ftp://nope').error, /http/);
+  assert.equal(searchSettings.checkSearchEndpoint('http://searx.example.com').ok, false, 'plain http to a public host leaks queries');
+  assert.equal(searchSettings.checkSearchEndpoint('https://user:pass@searx.example.com').ok, false, 'no credentials in the URL');
+  assert.equal(searchSettings.checkSearchEndpoint('   ').kind, 'builtin');
+  const cleanedEndpoint = searchSettings.checkSearchEndpoint('https://searx.example.com/search?q=old&language=zh#top');
+  assert.equal(cleanedEndpoint.ok, true);
+  assert.ok(cleanedEndpoint.url.includes('language=zh'), 'other parameters survive');
+  assert.ok(!/[?&]q=/.test(cleanedEndpoint.url), 'a pasted q= is dropped, the query is ours');
+  assert.ok(!cleanedEndpoint.url.includes('#'));
+  assert.equal(
+    searchSettings.buildSearchUrl('https://searx.example.com/search?language=zh', 'a b'),
+    'https://searx.example.com/search?language=zh&q=a+b',
+  );
+  assert.equal(searchSettings.searxngJsonUrl('http://127.0.0.1:8888/search'), 'http://127.0.0.1:8888/search?format=json');
+  assert.equal(searchSettings.looksLikeJsonBody('  {"results":[]}'), true);
+  assert.equal(searchSettings.looksLikeJsonBody('<html>'), false);
+
+  const searxBody = JSON.stringify({
+    results: [
+      { title: 'Aether  <b>release</b>', url: 'https://example.com/a', content: 'first   result' },
+      { title: 'bad', url: 'ftp://nope' },
+      { title: 'Duplicate', url: 'https://example.com/a', content: 'again' },
+      { title: 'Second', url: 'http://example.com/b', snippet: 'second body' },
+      { title: 'Long', url: 'https://example.com/c', content: 'x'.repeat(400) },
+    ],
+  });
+  const searxHits = searchSettings.parseSearxngPayload(searxBody, 5);
+  assert.equal(searxHits.length, 3, 'non-http and duplicate rows are dropped');
+  assert.equal(searxHits[0].title, 'Aether <b>release</b>');
+  assert.equal(searxHits[0].snippet, 'first result');
+  assert.equal(searxHits[1].snippet, 'second body');
+  assert.equal(searxHits[2].snippet.length, 260, 'a long snippet is clipped');
+  assert.equal(searchSettings.parseSearxngPayload({ results: [{ title: 't', url: 'https://x.example/y' }] })[0].snippet, '');
+  assert.equal(
+    searchSettings.parseSearxngPayload({ results: [{ url: 'https://x.example/y' }] })[0].title,
+    'https://x.example/y',
+    'a missing title falls back to the URL',
+  );
+  assert.deepEqual(searchSettings.parseSearxngPayload('not json', 3), []);
+  assert.deepEqual(searchSettings.parseSearxngPayload('{oops', 3), []);
+  assert.deepEqual(searchSettings.parseSearxngPayload({ results: 'nope' }, 3), []);
+  assert.equal(
+    searchSettings.parseSearxngPayload(
+      { results: Array.from({ length: 20 }, (_, i) => ({ title: `t${i}`, url: `https://x.example/${i}` })) },
+      3,
+    ).length,
+    3,
+  );
+
+  assert.deepEqual(searchSettings.normalizeEngineOrder('baidu, NOPE, baidu , bing'), ['baidu', 'bing']);
+  assert.equal(searchSettings.normalizeEngineOrder([]).length, 5, 'an empty order means every engine');
+  assert.deepEqual(searchSettings.normalizeEngineOrder(''), searchSettings.engineIds());
+  const engineOrder = searchSettings.engineIds();
+  assert.deepEqual(searchSettings.moveEngine(engineOrder, 'sogou', -1), ['duckduckgo', 'sogou', 'bing', 'baidu', '360']);
+  assert.deepEqual(searchSettings.moveEngine(engineOrder, 'duckduckgo', -1), engineOrder, 'the top engine stays');
+  assert.deepEqual(searchSettings.moveEngine(engineOrder, '360', 1), engineOrder, 'the bottom engine stays');
+  assert.deepEqual(searchSettings.moveEngine(engineOrder, 'nope', 1), engineOrder);
+  assert.deepEqual(searchSettings.toggleEngine(engineOrder, 'bing'), ['duckduckgo', 'sogou', 'baidu', '360']);
+  assert.deepEqual(searchSettings.toggleEngine(['baidu'], 'bing'), ['baidu', 'bing'], 'a re-enabled engine goes last');
+  assert.deepEqual(searchSettings.toggleEngine(['baidu'], 'baidu'), ['baidu'], 'the last engine cannot be turned off');
+  assert.deepEqual(searchSettings.toggleEngine(engineOrder, 'nope'), engineOrder);
+
+  const envPinned = searchSettings.envSearchSettings({ AETHER_SEARCH_URL: '127.0.0.1:8888/search' });
+  assert.equal(envPinned.url, 'http://127.0.0.1:8888/search');
+  assert.equal(searchSettings.envSearchSettings({ AETHER_SEARCH_ENGINES: 'baidu, 360' }).engines.join(','), 'baidu,360');
+  assert.equal(searchSettings.envSearchSettings({ AETHER_SEARCH_URL: 'ftp://nope' }).url, '', 'an unusable variable is ignored');
+  assert.equal(searchSettings.envSearchSettings({}), null);
+
+  const savedSearch = { url: 'http://127.0.0.1:8888/search', engines: ['baidu', 'bing'] };
+  assert.equal(searchSettings.resolveSearchSettings(savedSearch, envPinned).source, 'settings', 'saved outranks the environment');
+  assert.equal(searchSettings.resolveSearchSettings(null, envPinned).source, 'env');
+  const searchDefaults = searchSettings.resolveSearchSettings(null, null);
+  assert.equal(searchDefaults.source, 'default');
+  assert.equal(searchDefaults.settings.url, '');
+  assert.equal(searchDefaults.settings.engines.length, 5);
+  assert.equal(searchSettings.describeSearchSource(searchDefaults.settings, 'default').kind, 'builtin');
+  const describedSource = searchSettings.describeSearchSource(savedSearch, 'settings');
+  assert.equal(describedSource.kind, 'searxng');
+  assert.equal(describedSource.host, '127.0.0.1:8888');
+  assert.equal(describedSource.endpoint, 'http://127.0.0.1:8888/search');
+
+  assert.equal(searchSettings.validateSearchDraft({ url: 'ftp://nope' }).ok, false);
+  assert.ok(searchSettings.validateSearchDraft({ url: 'ftp://nope' }).errors.url);
+  assert.equal(searchSettings.validateSearchDraft({ url: '' }).ok, true);
+  assert.deepEqual(searchSettings.validateSearchDraft({ url: 'http://127.0.0.1:8888/search', engines: ['baidu'] }).settings.engines, ['baidu']);
+
+  const pinnedProviders = webSearch.buildProviders(savedSearch);
+  assert.equal(pinnedProviders.length, 1, 'a pinned endpoint replaces the chain');
+  assert.equal(pinnedProviders[0].label, '127.0.0.1:8888');
+  assert.match(pinnedProviders[0].jsonUrl, /format=json/);
+  assert.match(pinnedProviders[0].url('a b'), /q=a\+b/);
+  const chainProviders = webSearch.buildProviders({ engines: ['baidu', 'bing'] });
+  assert.deepEqual(chainProviders.map((provider) => provider.id), ['baidu', 'bing']);
+  assert.equal(chainProviders[0].label, 'baidu.com');
+  assert.equal(webSearch.buildProviders({}).length, 5, 'no settings means the shipped chain');
+  assert.equal(webSearch.buildProviders({ engines: ['nope'] }).length, 5, 'an unknown engine falls back to the chain');
+  assert.equal(webSearch.buildProviders({ url: 'ftp://nope' }).length, 5, 'an unusable endpoint falls back to the chain');
+  console.log('PASS search settings: endpoint rules, SearXNG JSON, engine order, env precedence and the provider plan');
 
   // Artifact triage: magic bytes, headers, entropy, strings and indicators.
   const reverse = await loadTs(path.resolve('lib/agent/reverse.ts'));

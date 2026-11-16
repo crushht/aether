@@ -1242,4 +1242,42 @@ export const zh: Record<string, string> = {
   'Embedded payloads': '内嵌载荷',
   'Strings': '字符串',
   'first {shown} of {total}': '前 {shown} / {total}',
+
+  // Web search source (settings → Web search)
+  'Web search': '网页搜索',
+  'The agent reaches the web through exactly one source. A SearXNG endpoint replaces the built-in chain; the engine order decides what gets tried when no endpoint is set.':
+    'Agent 只能通过一个来源联网。填了 SearXNG 端点就取代内置引擎链；没填端点时，按下面的引擎优先级依次尝试。',
+  'Saved in this workspace.': '保存在本工作区。',
+  'From the environment (AETHER_SEARCH_URL).': '来自环境变量（AETHER_SEARCH_URL）。',
+  'Shipped default — nothing configured yet.': '出厂默认——还没有配置。',
+  'Built-in chain': '内置引擎链',
+  'SearXNG': 'SearXNG',
+  'Custom endpoint': '自定义端点',
+  'Answering endpoint': '当前生效端点',
+  'engines': '个引擎',
+  'Search endpoint': '搜索端点',
+  'A SearXNG instance, or any engine that accepts ?q=. Leave it empty to use the chain below.':
+    '自建 SearXNG，或任何接受 ?q= 的引擎。留空则使用下面的引擎链。',
+  'Reset to default': '恢复默认',
+  'Saved. The next web_search uses this source.': '已保存，下一次 web_search 就用这个来源。',
+  'Search source saved': '搜索来源已保存',
+  'Cleared. AETHER_SEARCH_URL or the built-in chain takes over.': '已清除，改由 AETHER_SEARCH_URL 或内置引擎链接管。',
+  'Search source reset': '搜索来源已重置',
+  'Engine priority': '引擎优先级',
+  'Move an engine up to try it earlier, or turn it off to skip it. The chain stops at the first engine that answers.':
+    '把引擎上移就优先尝试，关掉就跳过。链上第一个返回结果的引擎即停止。',
+  'The endpoint wins over this order — the chain only runs when no endpoint is saved.':
+    '端点优先于这个顺序——只有没保存端点时才会跑引擎链。',
+  'Higher priority': '提高优先级',
+  'Lower priority': '降低优先级',
+  'Turn off': '关闭',
+  'Turned off': '已关闭',
+  'On': '开启',
+  'Run a test': '试跑一次',
+  'Runs the endpoint and order above right now — saving is not required.':
+    '立刻用上面的端点与顺序试跑，不需要先保存。',
+  'A query to try, for example aether release notes': '试跑的查询，例如 aether release notes',
+  'hits': '条命中',
+  'The test returned nothing.': '试跑没有返回结果。',
+  'Could not load the search settings.': '读取搜索设置失败。',
 };

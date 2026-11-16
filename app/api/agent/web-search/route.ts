@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/server/rate-limit';
 import { requireUser } from '@/lib/server-auth';
+import { effectiveSearchSettings } from '@/lib/server/search-settings';
 import { searchWeb } from '@/lib/server/web-search';
 
 export const runtime = 'nodejs';
@@ -30,8 +31,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await searchWeb(body.query ?? '', Number(body.limit) || 6);
-    return NextResponse.json({ ok: true, ...result });
+    // The source is a setting (settings page → Web search), not only an
+    // environment variable: read it per request so saving applies immediately.
+    const { settings, source } = await effectiveSearchSettings();
+    const result = await searchWeb(body.query ?? '', Number(body.limit) || 6, settings);
+    return NextResponse.json({ ok: true, source, ...result });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : 'The search failed.' },

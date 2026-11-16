@@ -5,6 +5,8 @@
 - **邮箱验证码体系**：零依赖 SMTP 客户端（`node:tls`）+ 六位码哈希存储 + 登录/注册/找回密码三条路径；
   QQ 邮箱真实投递与 code 登录实测通过；规则（10 分钟、5 次、60s 冷却、每小时 6 封）由 `lib/email-rules.ts` 前后端共用。
 - **Agent 联网**：`web_search` 五引擎链式回退（DDG/Bing/搜狗/百度/360，两套解析器），`fetch_url` 带外链与逐跳重定向校验。
+  来源后来做成设置：设置 →「网页搜索」可固定 SearXNG 端点（先 `format=json`，关掉就回退 HTML）、调整引擎优先级与开关，
+  保存写 `<数据目录>/search.json`，`/api/agent/web-search` 每请求现读（`lib/search-settings.ts` 纯逻辑 + 76 条回归断言）。
 - **Agent 静态逆向**：`inspect_artifact`（PE/ELF/Mach-O/ZIP-APK/熵/字符串/指示器/内嵌载荷/hexdump + sha256·sha1·md5）。
 - **Agent 工具结果卡片**：`web_search` 命中列表与 `inspect_artifact` 报告在对话流里折叠展开——
   卡片由纯函数构建并裁剪（`lib/agent/tool-cards.ts`），随会话持久化但只保留最新 12 张，
@@ -15,7 +17,7 @@
 
 ---
 
-对照 ChatGPT 与 Linear 的差距清单已逐项落地：共 **122 条**已完成条目（明细见 `NEXT.md` 的「已完成」），**73 个**浏览器/接口验收脚本（`scripts/e2e-*.mjs`）与 **28 项**纯函数回归（`scripts/regression.mjs`）。v0.4 又加了 4 组回归与 1 个验收脚本。
+对照 ChatGPT 与 Linear 的差距清单已逐项落地：共 **123 条**已完成条目（明细见 `NEXT.md` 的「已完成」），**74 个**浏览器/接口验收脚本（`scripts/e2e-*.mjs`）与 **29 项**纯函数回归（`scripts/regression.mjs`）。v0.4 又加了 4 组回归与 1 个验收脚本。
 
 ## 验证命令
 

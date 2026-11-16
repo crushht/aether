@@ -69,7 +69,7 @@ same tools, approvals and audit trail as you:
 - **Multiple providers**: OpenAI, DeepSeek, OpenRouter, Moonshot, Zhipu GLM, Ollama / LM Studio, any self-hosted endpoint
 - **Per-scene routing**: workspace chat, issue panel, project and workflows each pick their own provider and model
 - **Tool calls**: read/write issues, projects, knowledge, memory and workflows, with one readable line per step
-- **Web access**: `web_search` across a chain of engines (DuckDuckGo → Bing → Sogou → Baidu → 360, or a pinned SearXNG via `AETHER_SEARCH_URL`) and `fetch_url` for page text plus outbound links, with every redirect hop re-validated and private addresses refused
+- **Web access**: `web_search` across a chain of engines (DuckDuckGo → Bing → Sogou → Baidu → 360) and `fetch_url` for page text plus outbound links, with every redirect hop re-validated and private addresses refused. The source is a setting — **Settings → Web search** reorders the chain or pins a SearXNG endpoint (JSON first, HTML when the instance disables `format=json`), and `AETHER_SEARCH_URL` remains the read-only fallback
 - **Static triage**: `inspect_artifact` on an attachment or pasted blob — format and magic bytes, PE / ELF / Mach-O headers, ZIP / APK listings, entropy (packed or not), ASCII and UTF-16 strings, URL / IP / command / API indicators, embedded base64/hex payloads and a hex dump; read-only, never executes the sample
 - **Approvals**: confirm each write, or "always allow" a tool (stored per account in this browser)
 - **Memory and retrieval**: scoped memories plus keyword retrieval; add an embedding model for hybrid reranking

@@ -5,12 +5,16 @@
 ## [Unreleased]
 
 ### Added
+- **设置 → 网页搜索**：SearXNG / 自定义端点与内置引擎优先级在界面里配置，存到 `<数据目录>/search.json`；`/api/agent/web-search` 每次请求现读，**保存即生效**。SearXNG 先请求 `format=json`，实例关掉 JSON 时自动回退 HTML 解析；端点可用「试跑一次」当场验证命中
+- `GET/PUT/POST/DELETE /api/settings/search`：读取（任何成员）/ 保存（仅 owner）/ 试跑一次 / 清除并回退 `AETHER_SEARCH_URL`，试跑限流
+- `lib/search-settings.ts`：端点校验（本机与内网允许 http，公网必须 https，URL 不许带凭据，粘进来的 `q=` 丢弃）、SearXNG JSON 解析（去重 / 截断 / 只放行 http(s)）、引擎优先级与 `AETHER_SEARCH_ENGINES`
 - **设置 → 邮件**：SMTP 主机 / 端口 / 账号 / 授权码 / 发件人在界面里配置，授权码用 AES-256-GCM（`encryptSecret`）存到 `<数据目录>/mail.json`，接口只回「有没有密码」与末两位；保存后 `/api/auth` 的 `emailCode.available` 立即变化，无需重启
 - `GET/PUT/POST/DELETE /api/settings/mail`：读取（任何成员）/ 保存（仅 owner）/ 测试连接 / 发送测试邮件 / 清除并回退 `.env.local`，写路径限流
 - `verifyMail()`：只做 TCP → TLS → EHLO → AUTH 的连通性探测，测试邮件也走同一份草稿
 - 明文 SMTP 只允许本机与内网地址（与连接器同一套规则）；公网中继必须隐式 TLS 或 STARTTLS
 
 ### Changed
+- `lib/server/web-search.ts`：引擎链顺序改为设置驱动（默认仍是 DuckDuckGo → Bing → 搜狗 → 百度 → 360），固定端点优先于整条链；`AETHER_SEARCH_URL` 不再是唯一入口
 - `mailer` 的配置改为异步：先读设置页保存的中继，再回退 `AETHER_SMTP_*`；`emailVerificationRequired()` 随之异步
 - `docs/05-部署.md`：SMTP 一节改为「首选设置页，`.env.local` 作为只读回退」
 
