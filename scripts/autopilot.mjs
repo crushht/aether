@@ -415,7 +415,19 @@ async function runAgent(sessionId, prompt, timeoutMs, custom, resume) {
 
   if (custom) {
     const line = custom.replaceAll('{{promptFile}}', promptFile).replaceAll('{{session}}', sessionId ?? '');
-    return { ...(await runShell(line, { timeoutMs, inherit: true })), sessionId: null, final: '', tools: [] };
+    // A wrapper script can read the prompt from the env instead of argv, which
+    // is the only way to survive cmd.exe quoting with multi-line Chinese.
+    return {
+      ...(await runShell(line, {
+        timeoutMs,
+        inherit: true,
+        extraEnv: { AUTOPILOT_PROMPT_FILE: promptFile, AUTOPILOT_SESSION: sessionId ?? '' },
+      })),
+      sessionId: null,
+      final: '',
+      tools: [],
+      error: '',
+    };
   }
 
   const isWindows = process.platform === 'win32';
