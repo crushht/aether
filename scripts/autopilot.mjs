@@ -529,11 +529,13 @@ async function probeAgent(custom) {
   const probeSession = `aether-probe-${Date.now().toString(36)}`;
   const prompt = 'Reply with the single word OK and nothing else. Do not use tools.';
   if (custom) {
-    const line = custom
-      .replaceAll('{{promptFile}}', path.join(paths.dir, 'probe-prompt.txt'))
-      .replaceAll('{{session}}', probeSession);
-    writeFileSync(path.join(paths.dir, 'probe-prompt.txt'), prompt, 'utf8');
-    const result = await runShell(line, { timeoutMs: 120_000 });
+    const probePromptFile = path.join(paths.dir, 'probe-prompt.txt');
+    writeFileSync(probePromptFile, prompt, 'utf8');
+    const line = custom.replaceAll('{{promptFile}}', probePromptFile).replaceAll('{{session}}', probeSession);
+    const result = await runShell(line, {
+      timeoutMs: 120_000,
+      extraEnv: { AUTOPILOT_PROMPT_FILE: probePromptFile, AUTOPILOT_SESSION: probeSession },
+    });
     const text = result.output.trim();
     return { ok: result.code === 0 && text.length > 0, reason: result.code === 0 ? '' : `exit ${result.code}` };
   }
