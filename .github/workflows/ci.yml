@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      - name: regression
+        run: npm test
+
+      - name: translations
+        run: npm run i18n
+
+      - name: build
+        run: npm run build
+
+      - name: smoke — the auth endpoint answers and needs setup
+        run: |
+          npx next start -p 4321 & sleep 6
+          curl -fsS http://127.0.0.1:4321/api/auth | tee /tmp/auth.json
+          grep -q '"mode":"accounts"' /tmp/auth.json
+          grep -q '"needsSetup":true' /tmp/auth.json
+          pkill -f "next start" || true
+
+      - name: browser smoke — the three flows that break most often
+        env:
+          AUTH_DISABLED: '1'
+          LAB_DATA_DIR: ${{ github.workspace }}/.e2e-data
+          AETHER_BACKUP_INTERVAL_MS: '0'
+        run: |
+          npm run dev > /tmp/dev.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:4321/api/auth > /dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:4321/api/auth > /dev/null
+          node scripts/e2e.mjs
+          node scripts/e2e-search-page.mjs
+          node scripts/e2e-workspace-backups.mjs
+          pkill -f "next dev" || true

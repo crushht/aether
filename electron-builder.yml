@@ -1,0 +1,64 @@
+# electron-builder configuration
+appId: dev.aether.desktop
+productName: Aether
+copyright: Copyright © 2026 Aether contributors
+
+directories:
+  output: dist
+  buildResources: build
+
+# the Electron shell itself ships as source; everything else is bundled server
+# the shell needs no runtime dependency: the Next server ships in resources/
+files:
+  - desktop/**
+  - package.json
+  - '!node_modules/**'
+  - '!**/*.map'
+  - '!**/.data/**'
+
+extraResources:
+  - from: .next/standalone
+    to: server
+    filter:
+      - '**/*'
+      - '!.next/cache/**'
+      - '!.data/**'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  # rcedit needs winCodeSign, whose archive contains macOS symlinks that Windows
+  # refuses to create without Developer Mode or an elevated shell. Turning the
+  # resource edit off keeps local/CI packaging working; re-enable it once the
+  # release machine can create symlinks (the icon and version are cosmetic).
+  signAndEditExecutable: false
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Aether
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
+mac:
+  target: [dmg]
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+
+linux:
+  target: [AppImage, deb]
+  category: Development
+  icon: build/icon.png
+
+publish: null

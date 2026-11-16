@@ -1,0 +1,63 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# data — never commit a workspace, accounts or keys
+.data/
+.improve/
+.data* 
+
+# local test data
+.ci-data/
+.e2e-data/
+.data-dev/
+.pack-data/
+
+# internal brief and working notes
+任务书/
+improve.ps1
+
+# research captures: screenshots and scraped JSON are not redistributable,
+# but the CDP helper is test infrastructure and must ship
+study/*
+!study/cdp.mjs
+
+# only the screenshots the README uses ship; the rest are local research
+docs/check/
+docs/checks/*
+!docs/checks/201-aether-list.png
+!docs/checks/202-aether-agents.png
+!docs/checks/203-aether-workflows.png
+!docs/checks/204-aether-chat.png
+!docs/checks/206-aether-login.png
+!docs/checks/224-mobile-list.png
+!docs/checks/231-project-space.png
+
+# desktop build output
+dist/
+desktop-build/
+release/
+
+# raw clean-room sampling output: reference captures and scraped JSON are
+# research material, not something to redistribute
+study/shots/
+study/data/
+
+# logs and local artefacts
+*.log
+.dev.log
+.electron*.log
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.local
+.env.*.local

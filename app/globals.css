@@ -1,0 +1,555 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* ---------------------------------------------------------------- shared
+   Colours that do not change between themes. Keeping them here means a new
+   token only has to be declared once — the light block overrides surfaces,
+   lines and text, nothing else. */
+:root {
+  --accent-fg: #ffffff;
+  --green: #27a644;
+  --red: #eb5757;
+  --orange: #fc7840;
+  --yellow: #f0bf00;
+  --teal: #00b8cc;
+  --pink: #f79ce0;
+
+  --status-backlog: #8a8f98;
+  --status-todo: #d0d6e0;
+  --status-progress: #f2c94c;
+  --status-review: #4ea7fc;
+  --status-done: #5e6ad2;
+  --status-canceled: #62666d;
+
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+
+/* ==========================================================================
+   Design tokens — measured from linear.app (see docs/01-设计分析报告.md)
+   ========================================================================== */
+
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg-base: #08090a;
+  --bg-panel: #0f1011;
+  --bg-elevated: #161718;
+  --bg-dialog: #1c1d1f;
+  --bg-hover: rgba(255, 255, 255, 0.03);
+  --bg-active: rgba(255, 255, 255, 0.045);
+  --bg-selected: rgba(255, 255, 255, 0.065);
+  --bg-accent-subtle: rgba(94, 106, 210, 0.14);
+
+  /* lines */
+  --line-subtle: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.12);
+  --line-solid: #2e2e32;
+
+  /* text */
+  --text-1: #f7f8f8;
+  --text-2: #d0d6e0;
+  --text-3: #8a8f98;
+  --text-4: #62666d;
+  --text-disabled: #4a4e57;
+
+  /* brand + semantic */
+  --accent: #5e6ad2;
+  --accent-hover: #6d78d5;
+  --accent-fg: #ffffff;
+  --focus: rgba(94, 106, 210, 0.42);
+  --green: #27a644;
+  --red: #eb5757;
+  --orange: #fc7840;
+  --yellow: #f0bf00;
+  --teal: #00b8cc;
+  --pink: #f79ce0;
+
+  /* status colours */
+  --status-backlog: #8a8f98;
+  --status-todo: #d0d6e0;
+  --status-progress: #f2c94c;
+  --status-review: #4ea7fc;
+  --status-done: #5e6ad2;
+  --status-canceled: #62666d;
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+
+  /* command menu + help sheet sit above everything and keep their own surface */
+  --bg-command: #141516;
+
+  /* cards that sit on the panel: comment cards, board cards */
+  --bg-card: #0f1011;
+  --bg-card-hover: #131415;
+
+  /* floating chrome: toasts, bulk bar, tooltips, chord hint */
+  --bg-float: #1f2124;
+  --float-ring: rgba(255, 255, 255, 0.08);
+
+  /* elevation, kept as tokens so light mode never inherits a dark shadow */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.36), inset 0 0 0 1px var(--line-subtle);
+  --shadow-overlay: 0 2px 32px rgba(0, 0, 0, 0.5);
+  --shadow-menu: 0 8px 28px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line-strong);
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--line-strong);
+  --shadow-drag: 0 14px 38px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--line-strong);
+  --shadow-dialog: 0 32px 80px -12px rgba(0, 0, 0, 0.7), inset 0 0 0 1px var(--line);
+
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Linear light: the sidebar is the canvas, content sits a hair above it,
+     floating chrome is pure white. That three-step ramp is what keeps a light
+     UI from looking flat and cheap. */
+  --bg-base: #efeff0;
+  --bg-panel: #f9f9fa;
+  --bg-elevated: #ffffff;
+  --bg-dialog: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.05);
+  --bg-selected: rgba(0, 0, 0, 0.07);
+  --bg-accent-subtle: rgba(94, 106, 210, 0.1);
+
+  --line-subtle: rgba(0, 0, 0, 0.06);
+  --line: rgba(0, 0, 0, 0.09);
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --line-solid: #e2e2e2;
+
+  --text-1: #23252a;
+  --text-2: #3c4149;
+  --text-3: #5b5d63;
+  --text-4: #7b8087;
+  --text-disabled: #b3b7bd;
+
+  --accent: #5e6ad2;
+  --accent-hover: #6d78d5;
+  --focus: rgba(94, 106, 210, 0.28);
+  --status-todo: #6b7280;
+  --status-backlog: #9aa0a8;
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+
+  --bg-float: #ffffff;
+  --float-ring: rgba(0, 0, 0, 0.08);
+
+  --bg-card: #ffffff;
+  --bg-card-hover: #fbfbfc;
+
+  --bg-command: #ffffff;
+
+  /* a light shadow is a whisper, not a drop: two layers, low alpha, cool grey */
+  --shadow-card: 0 1px 2px rgba(9, 10, 12, 0.04), inset 0 0 0 1px var(--line-subtle);
+  --shadow-overlay: 0 2px 24px rgba(9, 10, 12, 0.1);
+  --shadow-menu: 0 8px 24px -6px rgba(9, 10, 12, 0.16), 0 2px 6px rgba(9, 10, 12, 0.05),
+    inset 0 0 0 1px var(--line);
+  --shadow-pop: 0 20px 48px -12px rgba(9, 10, 12, 0.22), 0 2px 8px rgba(9, 10, 12, 0.05),
+    inset 0 0 0 1px var(--line);
+  --shadow-drag: 0 14px 38px -10px rgba(9, 10, 12, 0.22), inset 0 0 0 1px var(--line);
+  --shadow-dialog: 0 32px 80px -16px rgba(9, 10, 12, 0.32), 0 2px 6px rgba(9, 10, 12, 0.05),
+    inset 0 0 0 1px var(--line);
+}
+
+[data-theme='light'] {
+  /* a touch darker so the glyphs stay legible on white */
+  --status-todo: #6b7280;
+  --status-backlog: #9aa0a8;
+  --status-progress: #c99a12;
+  --status-review: #2f83d6;
+  --status-done: #4f5ac2;
+  --status-canceled: #8b919b;
+  --green: #1f8a39;
+  --red: #d34545;
+  --orange: #d8622b;
+  --yellow: #b28a00;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+* {
+  border-color: var(--line);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-1);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+  letter-spacing: -0.013em;
+  font-feature-settings: 'cv05' 1, 'cv08' 1, 'cv10' 1;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: rgba(94, 106, 210, 0.35);
+  color: var(--text-1);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-4);
+  opacity: 1;
+}
+
+/* numbers in issue ids / counts should never jitter */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ==========================================================================
+   Scrollbars — 6px, faint, widening on hover (measured)
+   ========================================================================== */
+
+.scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+.panel-hairline {
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+.edge-fade-r {
+  mask-image: linear-gradient(to right, black calc(100% - 56px), transparent);
+}
+
+.edge-fade-b {
+  mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+}
+
+.hide-caret {
+  caret-color: transparent;
+}
+
+/* subtle top highlight on elevated surfaces */
+.surface-highlight {
+  position: relative;
+}
+.surface-highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* ==========================================================================
+   Description / comment rich text
+   ========================================================================== */
+
+.prose-linear {
+  font-size: 15px;
+  line-height: 1.65;
+  letter-spacing: -0.011em;
+  color: var(--text-2);
+}
+.prose-linear > * + * {
+  margin-top: 0.75em;
+}
+.prose-linear h1,
+.prose-linear h2,
+.prose-linear h3 {
+  color: var(--text-1);
+  font-weight: 590;
+  letter-spacing: -0.014em;
+  line-height: 1.4;
+  margin-top: 1.25em;
+}
+.prose-linear h1 {
+  font-size: 20px;
+}
+.prose-linear h2 {
+  font-size: 17px;
+}
+.prose-linear h3 {
+  font-size: 15px;
+}
+.prose-linear strong {
+  color: var(--text-1);
+  font-weight: 590;
+}
+.prose-linear em {
+  font-style: italic;
+}
+.prose-linear a {
+  color: #8fa6ff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(143, 166, 255, 0.3);
+}
+.prose-linear code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* the code chip needs a dark-on-light version once the theme flips */
+[data-theme='light'] .prose-linear code {
+  background: rgba(0, 0, 0, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.07);
+}
+.prose-linear pre code {
+  white-space: pre;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+.prose-linear ul,
+.prose-linear ol {
+  padding-left: 1.25em;
+}
+.prose-linear ul {
+  list-style: disc;
+}
+.prose-linear ol {
+  list-style: decimal;
+}
+.prose-linear li::marker {
+  color: var(--text-4);
+}
+.prose-linear blockquote {
+  border-left: 2px solid var(--line-solid);
+  padding-left: 12px;
+  color: var(--text-3);
+}
+.prose-linear.prose-compact {
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+.prose-linear.prose-compact > * + * {
+  margin-top: 0.5em;
+}
+
+.prose-linear hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.5em 0;
+}
+
+/* ==========================================================================
+   Contenteditable description — real inline formatting
+   ========================================================================== */
+
+.desc-editor {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.desc-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+.desc-editor:focus {
+  outline: none;
+}
+
+.desc-editor strong,
+.desc-editor b {
+  color: var(--text-1);
+  font-weight: 590;
+}
+
+.desc-editor em,
+.desc-editor i {
+  font-style: italic;
+}
+
+.desc-editor code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-1) 7%, transparent);
+}
+
+.desc-editor a {
+  color: #8fa6ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* drag helpers */
+.dragging-cursor,
+.dragging-cursor * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Touch — hover-only affordances still have to be reachable
+   -------------------------------------------------------------------------- */
+
+@media (hover: none) {
+  .coarse-show {
+    opacity: 1 !important;
+  }
+  /* the hover replacement takes over, so the original glyph steps aside */
+  .coarse-hide {
+    opacity: 0 !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Mobile drawer — the panel slides, the content lags slightly behind it
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  .drawer-body {
+    transform: translateX(-14px);
+    opacity: 0.55;
+    transition:
+      transform 260ms cubic-bezier(0.25, 0.46, 0.45, 0.94) 30ms,
+      opacity 180ms linear;
+  }
+  aside[data-open='true'] .drawer-body {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   Desktop shell (Electron)
+
+   The window is frameless with the native controls overlaid on the top bar,
+   so the bar itself becomes the drag handle. Everything interactive inside it
+   opts out again, and the right edge leaves room for the window buttons.
+   ========================================================================== */
+
+[data-desktop='1'] .window-drag {
+  -webkit-app-region: drag;
+  padding-right: 140px;
+}
+
+[data-desktop='1'] .window-drag :is(a, button, input, textarea, select, [role='button'], [role='menuitem'], [data-no-drag]) {
+  -webkit-app-region: no-drag;
+}
+
+[data-desktop='1'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* Respect an explicit request for less motion: transitions collapse, nothing
+   jumps, layout and focus cues stay intact. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Phones: several controls are visually compact by design (26-30px). Expand
+   their hit area instead of their looks, so thumbs hit them reliably without
+   changing the desktop density. Kept to 3px so neighbouring targets never
+   overlap. */
+@media (max-width: 1023px) {
+  [data-mobile-hit] {
+    position: relative;
+  }
+  [data-mobile-hit]::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    pointer-events: auto;
+  }
+}

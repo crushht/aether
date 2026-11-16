@@ -1,0 +1,443 @@
+# NEXT — Aether 的持续待办
+
+> 规则（给自己的脚本）：
+> 1. 每轮先运行 `node scripts/next.mjs`，拿到第一条未完成项。
+> 2. 做完后运行 `node scripts/next.mjs --done "<该项原文>"` 勾选，并在「已完成」里记一行（含验证方式）。
+> 3. 立即继续下一条；只有全部完成、且无法从 README / docs 的已知边界里补出新项时才停。
+> 4. 每项都必须 `npx tsc --noEmit` 与 `npm run build` 通过；涉及交互的用真实 dev 或本地网关验证。
+> 5. 不改坏既有能力；发现回归先修回归，再继续待办。
+
+## 待办
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- [ ] P0 恢复 exe 图标与版本信息（需开发者模式或 CI 打包）
+- [x] P2 桌面托盘与深链：最小化到托盘、aether:// 打开议题
+- [x] P2 备份恢复 diff 预览：恢复前看到差异
+- [x] P2 Agent 用量汇总：今日 token/调用统计
+- [x] P1 移动端审计：375 宽关键流程 e2e
+- [x] P1 英文界面：en.ts 与语言切换完整性
+- [x] P1 CSP 收紧：观察期日志检查脚本与切换开关
+- [x] P1 打包版首启引导：空工作区导入示例或恢复备份
+- [x] P1 清理 lint warnings：未使用 import 与 hook 依赖
+- [x] P0 Provider 保存校验：默认模型不在上游列表时提示并给出一键修正
+- [x] P1 拆分 lib/store/data.ts（1111 行）
+- [x] P1 拆分 agent-chat.tsx（1574 行）
+- [x] P2 列表行键盘等价：行可聚焦、Enter 打开、状态切换
+- [x] P1 拆分 issue-drawer/agent-chat/data.ts
+- [x] P2 抽屉 focus trap 与列表键盘等价
+- [x] P2 图片上传压缩：dataURL 控制在 300KB 内
+- [x] P2 i18n 缺键检查脚本
+- [x] P1 SSE 可见性：后台暂停与断线状态
+- [x] P1 持久化 store 工厂：去掉 7 处重复 hydrate/persist
+- [x] P0 CSP Report-Only：先观察再收紧
+- [x] P0 CI 核心 e2e：登录、议题、搜索、备份进 CI
+- [x] P0 ESLint：安装并配置 flat config，修复/降级现有问题，CI 加 lint
+- [x] P2 搜索结果片段：文档/知识命中显示上下文
+- [x] P2 邀请状态刷新：成员页手动刷新邀请码
+- [x] P2 搜索输入不阻塞：延迟结果计算与过期样式
+- [x] P2 灯箱焦点陷阱：Tab 不离开预览
+- [x] P2 项目更新共享灯箱：移除内联重复实现
+- [x] P2 评论附件灯箱：图片评论附件可预览
+- [x] P2 收件箱分组吸顶：滚动时保留日期标题
+- [x] P2 搜索最近查询：空态回填与清除
+- [x] P2 议题附件灯箱：与项目更新共用预览组件
+- [x] P2 灯箱多图切换：左右箭头与计数
+- [x] P2 更新附件筛选：只看带附件的更新
+- [x] P2 附件过大提示：跳过文件时说明原因
+- [x] P2 搜索空态快捷入口：直达议题/项目/文档/知识
+- [x] P2 更新图片预览：点击附件打开灯箱，Esc 关闭
+- [x] P2 搜索覆盖文档：标题/正文命中并支持深链
+- [x] P2 搜索页键盘与高亮：↑↓选择、Enter 打开、命中标记
+- [x] P1 全局搜索页：修复 /search 死链并覆盖议题/项目/知识
+- [x] P2 项目摘要 JSON 导出：结构化状态与议题
+- [x] P2 收件箱日期分组：今天/昨天/更早标题
+- [x] P2 更新附件上限提示：超过 5 个时告知
+- [x] P2 导出补充：项目摘要与周报包含更新附件名
+- [x] P2 项目更新附件：发布时可附带文件与图片
+- [x] P2 命令面板新建项目：直接打开项目创建表单
+- [x] P2 附件批量下载：一键下载议题全部附件
+- [x] P2 通知菜单键盘：方向键高亮、Enter 执行、Esc 关闭
+- [x] P2 评论粘贴图片：直接加入评论附件草稿
+- [x] P2 通知右键菜单：打开/已读/归档/删除
+- [x] P2 聊天输入历史：上下键回看最近提问
+- [x] P2 备份恢复预览：显示快照内议题/项目数量
+- [x] P2 命令面板折叠持久化：关闭/刷新后保留分组折叠
+- [x] P2 通知搜索高亮：命中词标记
+- [x] P2 设置页搜索：按名称过滤设置分区
+- [x] P2 通知归档自动清理：30 天后删除
+- [x] P2 列表分组折叠持久化：刷新后保留折叠状态
+- [x] P2 看板列展开持久化：刷新后保留展开状态
+- [x] P2 会话导出验收：Markdown/JSON 入口与内容
+- [x] P2 Agent 工具总是允许：白名单与设置管理
+- [x] P2 知识库导入验收：多文件与大小限制
+- [x] P2 桌面窗口状态：记忆尺寸位置并防止移出屏幕
+- [x] P2 改密撤销其他会话：安全加固并测试
+- [x] P2 成员角色管理：所有者提升/降级与最后所有者保护
+- [x] P2 会话设备信息：记录并显示 IP 与登录时间
+- [x] P2 会话管理：查看登录设备与登出其他会话
+- [x] P2 工作区备份补充：立即备份与删除单份
+- [x] P2 工作区自动备份：定时快照与一键恢复
+- [x] P2 项目摘要：包含议题清单与按状态分组
+- [x] P2 项目摘要导出：状态/更新/审计一站式 Markdown
+- [x] P2 审计动作本地化：动作标签跟随语言
+- [x] P2 审计动作筛选：加入点赞/确认事件
+- [x] P2 回应审计：把点赞/确认写入更新历史
+- [x] P2 审计时间范围：按本周/本月筛选历史
+- [x] P2 审计分页：历史超过 20 条分批加载
+- [x] P2 项目更新分页：超过 20 条分批加载
+- [x] P2 更新搜索高亮：命中片段标记
+- [x] P2 项目更新搜索：按正文/作者过滤更新列表
+- [x] P2 周报全部导出：一次下载最近四周汇总
+- [x] P2 周报导出：按周导出更新与回应 Markdown
+- [x] P2 周报点击查看：按周筛选更新列表
+- [x] P2 项目回应周报：按周汇总点赞/确认（单账号同步下 “他人回应提醒” 需多账号事件流，暂缓）
+- [x] P2 回应者列表：悬停显示点赞/确认成员
+- [x] P2 项目更新回应：对更新点赞/确认
+- [x] P2 审计导出复制：一键复制 Markdown 到剪贴板
+- [x] P2 项目审计 JSON 导出：便于外部处理
+- [x] P2 项目审计导出：历史记录导出 Markdown
+- [x] P2 项目审计筛选：按动作与作者筛选历史
+- [x] P2 项目更新审计：记录编辑与删除历史
+- [x] P2 项目更新编辑：发布后可修改正文与健康状态
+- [x] P2 通知长按多选：批量归档与删除
+- [x] P2 摘要点击定位：跳到当天未读动态
+- [x] P2 每日通知摘要：汇总当天提及与项目更新
+- [x] P2 桌面通知点击跳转：打开对应议题或项目
+- [x] P2 免打扰时段：通知静音但保留收件箱
+- [x] P2 通知偏好：按类型开关收件箱与桌面提醒
+- [x] P2 模板导出与导入：项目/议题模板 JSON 迁移
+- [x] P2 通知键盘导航：J/K 浏览、Enter 打开、A 归档
+- [x] P2 项目模板：从现有项目复制结构创建
+- [x] P2 通知搜索与批量清除：按关键字过滤、清空已归档
+- [x] P2 项目健康历史：按更新记录展示趋势
+- [x] P2 项目更新健康联动：发布更新时同步项目健康状态
+- [x] P2 通知按项目筛选：项目更新独立视图
+- [ ] P2 多工作区切换：按 workspaceId 分区数据（需要服务端数据模型与路由改造）
+- [ ] P2 自动安装与代码签名（需要发布源与证书）
+- [x] P0 会话可靠性：独立草稿、附件移除、指定轮次编辑、重新生成、分支与中断恢复
+- [x] P0 工作区可靠性：同步冲突提示、统一撤销、议题深链与浏览器历史
+- [x] P1 项目空间：项目指令、知识与会话上下文、项目内直接提问
+- [x] P1 保存视图：保存、重命名、分享筛选状态与视图快捷入口
+- [x] P1 对话质量：代码块复制、原文编辑、语音输入与反馈
+- [x] P1 议题效率：分组、截止日期筛选、评论草稿与编辑
+- [x] P1 任务中心：活动运行、失败恢复、排队提示与工作流历史
+- [x] P1 文档产物：回答保存为文档、预览、编辑与下载
+- [x] P1 大列表性能与可访问性回归
+- [x] P2 语义检索：向量/embedding 索引与跨条引用
+- [x] P2 连接器：GitHub / Slack / Drive 读写与审批
+- [x] P2 实时协作：多端增量推送与冲突合并
+- [x] P2 桌面自动更新与跨平台签名
+- [x] 工作流复制 JSON 定义
+- [x] Agent 会话导出 JSON
+- [x] About 显示 Provider / 工作流 / 知识条数
+- [x] 工作流批量运行
+- [x] 知识库导出全部为 Markdown
+- [x] 设置页显示调度器状态
+- [x] 知识库条目支持置顶
+- [x] 工作流卡片显示下次运行时间
+- [x] 会话指令一键存为工作流
+- [x] 清空会话二次确认
+- [x] 删除知识条目二次确认
+- [x] 删除工作流二次确认
+- [x] 记忆支持按 scope 过滤
+- [x] 工作流运行记录显示模型名
+- [x] 知识条目支持复制为 Markdown
+- [x] 会话列表显示消息数与最近时间
+- [x] 工作流运行记录带耗时
+- [x] 会话消息复制为纯文本
+- [x] Issue 评论超过 5 条折叠
+- [x] 知识库批量导入（多选文件）
+- [x] 设置页导出工作区快照（JSON）
+- [x] Issue 活动流超过 8 条默认折叠
+- [x] 上下文用量 hover 明细
+- [x] Board 列头新建后打开抽屉
+- [x] 快捷键面板补充 /clear、@引用与 ⌘K 工作流
+- [x] 设置页导出与导入 Provider 配置（不含 Key）
+- [x] Agent 计划视图（按步骤折叠工具明细）
+- [x] 工作流模板库（周期体检 / 发布说明 / 风险扫描）
+- [x] Board 空态与列表一致的三入口引导
+- [x] Issue List 首屏骨架
+- [x] 来源 chip 点击过滤（只看该工作流生成的议题）
+- [x] Board 报告议题高亮（新生成 30 秒内描边）
+- [x] 会话导出带 token 用量与工作流来源
+- [x] Agent 单次运行历史（步骤 / 工具 / 耗时 / 模型）
+- [x] 服务端工具扩展：bulk_update 与 set_cycle
+- [x] PDF 附件文本提取（服务端，无第三方依赖的兜底）
+- [x] 移动端 390px 全流程检查（列表 / 看板 / 对话 / 设置）
+- [x] 命令面板「新建知识笔记」与「新建工作流」直达
+- [x] 设置页 About 增加版本与数据目录说明
+- [x] 知识库支持标签编辑
+- [x] 工作流运行失败的一键重试
+- [x] Agent 回答引用可点击（ENG-1 跳转）
+- [x] 会话重命名后服务端标题同步
+- [x] 空工作区引导：第一议题 / 第一项目 / 第一个工作流
+## 已完成
+
+- 2026-11-15 桌面托盘与 aether:// 深链：新增 `scripts/make-tray-icon.mjs`（手写 PNG，无依赖）生成 `desktop/tray.png`；主进程加 Tray（显示/最小化到托盘/退出、单击唤回）、单实例 `second-instance` 解析 argv 中的 `aether://`、`open-url`（macOS）、`setAsDefaultProtocolClient`（dev 带 argv）、冷启动挂起 `pendingDeepLink` 直到 `did-finish-load`；preload 暴露 `onDeepLink`；新增 `components/shell/deep-links.tsx` 订阅 IPC 与 `aether:deeplink` DOM 事件并打开对应议题。验证：`node --check` 两个桌面文件通过、图标渲染确认、`e2e-deeplink`（派发事件 → 抽屉标题等于目标议题；空 payload 不动作）通过；lint/i18n/build/回归(32) 通过。托盘点击属于桌面运行时，本会话只做了静态与前端验证。
+- 2026-11-15 备份恢复 diff 预览：`GET /api/workspace/backups?preview=<id>` 返回快照的议题 key / 项目名与计数；新增纯函数 `lib/backup-diff.ts`（新增/缺失/共有）与设置页“预览”按钮，展开显示 `Issues: +N / -M / K 相同`、`Projects: …` 以及前三个 key/名字；同备份再点一次收起。回归新增 6 条断言（32 项）；浏览器验收：立即备份 → 新建议题 → 预览 → 显示 `-1` 且点名该议题 → 再点收起。`scripts/e2e-backup-diff.mjs` 通过；lint/i18n/build 通过。
+- 2026-11-15 Agent 用量汇总：新增 `lib/agent/usage-summary.ts`（按窗口汇总 runs 的 token/steps/tools/失败数、按模型排序、本地日边界）与设置页 Agents 顶部卡片（今日 / 近 7 天切换、本地标记）；回归新增窗口过滤与排序断言（31 项）；浏览器验收：注入 3 条 run（今日 2 条 + 10 天前 1 条）→ 卡片显示 2,400 tokens 与模型 chip，切 7 天仍为 2,400 且不含旧模型。`scripts/e2e-usage-summary.mjs` 通过；lint/i18n/build 通过。
+- 2026-11-15 移动端审计（375×812）：新增 `scripts/e2e-mobile.mjs` 覆盖议题列表、议题抽屉（宽度不超屏）、收件箱、搜索（含结果）、设置、项目、移动导航抽屉（`Ctrl+\` 打开 / Esc 关闭）、命令面板（宽度 ≤ 375）、看板、Agent 聊天，每处断言 `scrollWidth - clientWidth ≤ 2`，全部通过；测量发现顶栏图标（26px）与设置/收件箱 tab（26-30px）偏小，用 `[data-mobile-hit]::after` 伪元素扩大命中区（视觉与桌面密度不变），并断言伪元素生效。lint/i18n/build/回归(30) 通过。
+- 2026-11-15 英文界面收口：`npm run i18n` 增加 `--hardcoded` 扫描（源码里不走 `t()` 的中文字面量，数据/工具回执/模板文件显式白名单，语言名用 `i18n-allow` 注释），结果 **0 missing / 0 hardcoded**；`relativeTime` 的中文分支改走 `translate()`（新增 5 个键）；当前用户名 fallback“我”改为 `t('Me')`（议题抽屉、评论、侧栏共 6 处）；成员页两处 inline `locale === 'zh'` 分支统一为 `t()`。浏览器验收：切 English → `html lang=en`、设置页无中文标题 → 切中文 → `zh-CN` 恢复。`scripts/e2e-i18n-switch.mjs` 通过；typecheck/lint(0)/build/回归(30) 通过。
+- 2026-11-15 CSP 可收紧：报告落盘到 `<DATA_DIR>/csp-reports.jsonl`（2MB 上限），新增 `npm run csp:check`（按指令/来源聚合，`--strict` 有报告即退出 1）；`AETHER_CSP_ENFORCE=1` 时头名从 `Report-Only` 切到强制。实测：POST 报告 → 204 → 脚本输出 `img-src ← https://cdn.example.com/a.png`，strict 退出 1；两种 env 下头名分别验证。
+- 2026-11-15 首启引导：空工作区新增「导入示例数据」与「从备份恢复」两个入口；`seedWorkspace()` 通过正常 action 生成 2 个项目、1 个周期、8 个议题（含标签/评论/项目更新），历史与审计一致。浏览器验收：空数据目录 → 两个入口存在 → 点击导入 → 议题 ≥ 8、项目 = 2、周期 ≥ 1、入口消失。`scripts/e2e-first-run.mjs` 通过。
+- 2026-11-15 lint 归零：39 个 warning 全部处理——未使用的 import/变量删除（含 `data.ts` 的类型、`issue-row` 的 `statusColor`、`shortcuts` 的 hook 依赖）、`agent-chat` 的 `log` 用 `useMemo` 稳定引用、`inbox`/`agent-panel`/`issue-drawer` 的三处故意依赖加注释说明、`shortcuts` 的 `setChordTimed` 改 `useCallback` 并补依赖。`eslint .` → **0 problems**；typecheck/build/回归（30 项）通过；命令面板、主流程、收件箱右键 e2e 通过。
+- 2026-11-15 Provider 保存校验：默认模型不在上游列表时，字段下方显示橙色提示与“改用 X”按钮（`data-model-warning` / `data-use-first-model`）；保存时空默认自动取列表首个，非空但未知则按用户意图保留。`e2e-model-picker` 扩展断言（警告出现 → 一键修正 → 警告消失）通过；typecheck/lint/i18n 通过。
+- 2026-11-15 错误边界：新增 `app/global-error.tsx`（根 layout 崩溃兜底，自渲染 html/body）与 `app/(app)/error.tsx`（工作区段级，保留外壳 + 重试 + 可展开详情）；此前没有任何 error boundary，运行时异常会白屏。编译通过（typecheck/lint/i18n/build），运行时触发未做自动化。
+- 2026-11-15 桌面崩溃日志：主进程新增 `uncaughtException` / `unhandledRejection` 与启动失败写入 `%APPDATA%\<app>\main.log`，错误框指向该文件；此前打包版启动即退时无任何日志（Windows GUI 无控制台）。
+- 2026-11-15 场景路由模型也改为可点选：`Model per scene` 每个场景的模型输入框下渲染上游模型 chip（最多 6 个），与 Provider 默认模型一致；`e2e-model-picker` 扩展断言点击 `hy3` 后该场景模型更新。
+- 2026-11-15 默认模型选择修复：`测试连接` 拿到上游模型后会把 `defaultModel` 自动设为列表首个（原先只更新列表、默认值仍是预设的 `gpt-4o`，而本地网关并没有这个模型）；默认模型输入框下方新增可点击的模型 chip（最多 30 个 + 计数），Chrome 下 `input+datalist` 只显示与当前值匹配项的问题不再挡路；无模型时提示先去测试连接。浏览器验收：注入含 4 个上游模型的 provider → 编辑 → chips 渲染 → 点击 `glm-5.3` 后输入框值更新。`scripts/e2e-model-picker.mjs` 通过；typecheck/lint/i18n/build/回归（30 项）通过。
+- 2026-11-14 拆分 `agent-chat.tsx`：transcript 组件（ContextMeter / AttachmentChips / StepGroup / UserBubble / FinalAnswer）移到 `chat/transcript.tsx`，模型选择器移到 `chat/model-picker.tsx`，语音 hook 移到 `chat/use-voice-input.ts`；1574 → 1123 行，lint 仅剩 1 处已知 hook 依赖 warning，聊天草稿、导出、输入历史、命令面板 e2e 全部通过。
+- 2026-11-14 拆分 `lib/store/data.ts`：`DataState` 与 `SyncState` 抽到 `lib/store/data-types.ts`，data.ts 1111 → 1008 行；核心 store 实现保持单文件（按域拆 action 工厂风险高于收益，已记录取舍）。抽屉/项目更新/备份/收件箱 e2e 全部通过。
+- 2026-11-14 拆分 issue-drawer：附件区与评论区（含评论 composer）移到 `components/issue/attachments-section.tsx` / `comments-section.tsx`，公共 `downloadTextFile` 移到 `lib/download.ts`；`issue-drawer.tsx` 1752 → 1114 行，typecheck/lint 通过，附件灯箱、批量下载、评论粘贴、评论灯箱与主流程 e2e 全部通过。
+- 2026-11-14 抽屉焦点陷阱与列表键盘：抽屉打开即聚焦并让 Tab 在内部循环（`e2e-drawer-focus.mjs`）；列表行 `tabIndex=0`，Enter 打开、Space 选中并带 focus-visible 轮廓（`e2e-list-keyboard.mjs`）。
+- 2026-11-14 图片上传压缩：`readAttachmentFile` 对图片先按最长边 1600 缩放、WebP 质量扫描并在必要时继续缩尺寸，源文件上限 12 MB、结果上限 1.5 MB；实测 6.4 MB PNG → 873 KB WebP 后才进快照（`e2e-image-compress.mjs`）。
+- 2026-11-14 i18n 缺键门禁：新增 `scripts/i18n-check.mjs`（`npm run i18n --strict`）扫描 `t('…')` 与 zh.ts 的差集；补齐 27 个缺失键后 0 missing，并加入 CI。
+- 2026-11-14 SSE 可见性：标签隐藏时关闭 EventSource、可见时重连；断线通过 `useRealtime` 暴露，Shell 底部显示“实时更新已暂停，正在重连…”，恢复后自动消失（`e2e-realtime-status.mjs`）。
+- 2026-11-14 持久化 store 统一：新增 `lib/store/storage.ts`（readStorage/writeStorage/isStringArray），tool-approvals、search-history、chat-input-history、notification-prefs、issue-templates、project-templates 六处样板收敛；回归覆盖坏 JSON、类型过滤、上限与配额失败（30 项）。
+- 2026-11-14 CSP 观察期：新增 `Content-Security-Policy-Report-Only`（含 report-uri）与 `/api/csp-report` 端点（限流、8 KB 上限、只写日志）；HEAD 实测头存在、上报返回 204。
+- 2026-11-14 CI 与 ESLint：安装 eslint 9 + eslint-config-next，新增 flat `eslint.config.mjs`（0 error），`npm run lint` 改为 `eslint .`，CI 增加 lint、regression、translations 与浏览器冒烟（`e2e.mjs`/`e2e-search-page`/`e2e-workspace-backups`，headless Chrome 跨平台定位）。
+- 2026-11-14 安全与 CI 补强：新增安全响应头（nosniff / frame DENY / Referrer-Policy / Permissions-Policy），登录滑动窗口限流（10 次/分钟/IP，成功登录清零，超限 429 + Retry-After），CI 增加 `npm test` 回归步骤。HTTP 实测：第 10 次错误登录起返回 429；`Invoke-WebRequest -Method Head` 确认 4 个安全头。回归 29 项通过。
+- 2026-11-14 搜索结果片段：文档/知识命中在标题下显示 `matchSnippet` 命中上下文并高亮；文档结果右侧标注“文档”，知识仍显示类型。浏览器验收：文档内容含关键字 → 结果行出现片段。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 邀请状态刷新：成员页邀请区新增刷新按钮，重新拉取 `/api/auth`（邀请码/是否开放注册），请求期间禁用并旋转，完成后提示“邀请信息已刷新”；邀请码加载提取为 `loadInvite`。浏览器验收：点击 → 提示出现 → 按钮恢复。`scripts/e2e-invite-refresh.mjs` 通过。
+- 2026-11-14 搜索输入不阻塞：结果计算改用 `useDeferredValue`（输入即时、结果稍后），结果过期时降低透明度；高亮与历史记录同步使用同一查询。浏览器验收全流程仍通过。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 灯箱焦点陷阱：Tab / Shift+Tab 在灯箱内按钮间循环，焦点不再逃到背后页面；Esc 仍关闭。浏览器验收断言 Tab 后 activeElement 仍在灯箱内。`scripts/e2e-issue-lightbox.mjs` 通过。
+- 2026-11-14 项目更新共享灯箱：移除项目更新中约 70 行内联灯箱实现，改用 `AttachmentLightbox`；行为保持一致（多图、←/→、计数、Esc），测试选择器同步改为 `data-attachment-lightbox`。`scripts/e2e-update-lightbox.mjs` 通过。
+- 2026-11-14 评论附件灯箱：评论中的图片附件点击打开共享灯箱（同评论多图可切换），文本附件仍下载、其他类型新标签打开。浏览器验收：评论带图片 → 点击 → 灯箱出现 → Esc 关闭。`scripts/e2e-comment-lightbox.mjs` 通过。
+- 2026-11-14 收件箱分组吸顶：日期标题改为 `sticky top-0`，列表容器由 `overflow-hidden` 改为 `overflow-clip`（保留圆角裁剪且不阻断 sticky）；滚动时当前日期始终可见。浏览器验收断言 computed position 为 sticky。`scripts/e2e-inbox-days.mjs` 通过。
+- 2026-11-14 搜索最近查询：查询在 900ms 防抖后按账号记入 localStorage（去重、最近 6 条）；空态显示“最近搜索”chips，可点击回填或清除。浏览器验收：搜索 → 清空 → chip 出现 → 点击回填。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 议题附件灯箱：新增共享 `AttachmentLightbox`，议题图片附件由新标签页改为灯箱预览（多图 ←/→ 与计数、Esc 关闭）；项目更新继续使用同一预览语义。浏览器验收：两张图 → 1/2 → → 2/2 → Esc。`scripts/e2e-issue-lightbox.mjs` 通过。
+- 2026-11-14 灯箱多图切换：图片附件按同一条更新的全部图片组成画廊，左右按钮与 ←/→ 切换，底部显示 `n / total`；单图时隐藏控件。浏览器验收：两张图 → 计数 1/2 → → 2/2 → Esc 关闭。`scripts/e2e-update-lightbox.mjs` 通过。
+- 2026-11-14 更新附件筛选：更新区新增“有附件”chip，与周筛选/搜索叠加；计数按筛选结果，切回恢复全部；无匹配沿用提示。浏览器验收：两条更新（一条带附件）→ 筛选剩 1 条 → 取消恢复 2 条。`scripts/e2e-project-update-filter.mjs` 通过。
+- 2026-11-14 附件过大提示：项目更新选择超限/不支持的文件时提示“已跳过 n 个文件（过大或类型不支持）”；描述粘贴失败时区分“图片过大（最大 1.5 MB）/不支持的类型”。浏览器验收：300KB 文本被拒且无暂存。`scripts/e2e-attachment-too-large.mjs` 通过。
+- 2026-11-14 搜索空态快捷入口：未输入关键字时显示 4 个快捷卡片（议题/项目/文档/知识），点击直达；输入后恢复结果分组。浏览器验收：4 个入口存在、点击项目跳转、返回后可继续搜索。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 更新图片预览：项目更新中的图片附件点击打开全屏灯箱（遮罩、居中大图、关闭按钮），Esc 或点击遮罩关闭；文本附件仍直接下载。浏览器验收：点击图片 → 灯箱与图片存在 → Esc 关闭。`scripts/e2e-update-lightbox.mjs` 通过。
+- 2026-11-14 搜索覆盖文档：全局搜索新增“文档”分组（标题/正文命中），文档页支持 `?id=` 深链自动选中；知识图标改为书本、文档为文件，便于区分。浏览器验收：命中文档 → 点击进入文档页并选中。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 搜索页键盘与高亮：结果命中词用 `<mark>` 标记；输入框 ↑/↓ 移动活动结果、Enter 打开（议题抽屉/项目页/知识深链），活动行高亮并带 `data-search-index`。浏览器验收：首项 active → ↓ → Enter 打开项目 → 点击议题打开抽屉。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 全局搜索页：新增 `/search`（命令面板“Go to Search”此前是死链）；一个输入框搜索议题（标题/key/描述）、项目（名称/说明）、知识库（标题/内容），结果分组并可直接打开议题抽屉、项目页或知识深链；空查询提示、无结果提示。浏览器验收覆盖跨类型命中、点击打开与无结果。`scripts/e2e-search-page.mjs` 通过。
+- 2026-11-14 项目摘要 JSON 导出：与 Markdown 摘要并列的 `{}` 按钮，输出结构化 JSON（项目元数据/负责人名/成员数、进度与计数、议题清单、最近更新含附件名与回应数、审计动作计数、导出时间）。回归覆盖字段与进度；浏览器验收断言入口。`scripts/regression.mjs`、`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 收件箱日期分组：列表按本地日期插入“今天/昨天/更早”标题，分组间不再画行分隔线；分组为纯函数（非法日期归“更早”）。回归覆盖三档；浏览器验收注入三条不同日期通知后出现三档标题。`scripts/regression.mjs`、`scripts/e2e-inbox-days.mjs` 通过。
+- 2026-11-14 更新附件上限提示：单次选择超过剩余名额（上限 5）时提示“每条更新最多 5 个附件”，只读取名额内的文件，不再静默截断；浏览器验收一次选 6 个 → 暂存 5 个且出现提示。`scripts/e2e-project-update-limit.mjs` 通过。
+- 2026-11-14 导出补充：项目摘要与周报（单周/多周）在每条更新下输出 `Attachments: name, name`；回归断言附件名出现在两种导出中。typecheck/build/回归通过。`scripts/regression.mjs`。
+- 2026-11-14 项目更新附件：发布框可暂存最多 5 个文件（文本/图片），发布后随更新保存并在时间线渲染缩略图/文件名，点击下载；类型复用 `IssueAttachment`，随工作区快照持久化。浏览器验收：暂存 2 个文件 → 发布 → 存储 2 条附件且渲染。`scripts/e2e-project-update-attachments.mjs` 通过。
+- 2026-11-14 命令面板新建项目：Actions 新增“新建项目”，跳转 `/projects?new=1`，项目页读取参数自动展开创建表单并聚焦名称输入。浏览器验收：命令面板搜索并执行 → 项目页表单出现。`scripts/e2e-command-new-project.mjs` 通过。
+- 2026-11-14 附件批量下载：议题附件区在多于一个附件时显示“全部下载”，按 200ms 间隔逐个触发下载（文本附件用 Blob，图片用 dataUrl）。浏览器验收：3 个附件 → 点击后 3 次下载。`scripts/e2e-download-all.mjs` 通过。
+- 2026-11-14 通知菜单键盘：右键菜单打开后自动聚焦，↑/↓ 循环高亮、Enter 执行、Esc 关闭；鼠标悬停与键盘高亮同一套 active 样式。浏览器验收覆盖方向键高亮、Enter 归档、Esc 关闭与随后删除。`scripts/e2e-inbox-menu.mjs` 通过。
+- 2026-11-14 评论粘贴图片：评论输入框粘贴图片时拦截默认行为，读取为附件草稿（最多 3 张）并提示，随后可随评论提交；与描述粘贴行为一致。浏览器验收：构造 1×1 PNG 粘贴 → 草稿区出现附件。`scripts/e2e-comment-paste.mjs` 通过。
+- 2026-11-14 通知右键菜单：行右键弹出“打开 / 标为已读或未读 / 归档或恢复 / 删除”，位置按视口钳制，点击外部或再次右键关闭；操作复用既有通知动作。浏览器验收：右键归档 → 归档视图右键删除 → 存储确认。`scripts/e2e-inbox-menu.mjs` 通过。
+- 2026-11-14 聊天输入历史：发送的提问按账号存入 localStorage（去重、最近 30 条），输入框空/光标在开头时 ↑ 回看、↓ 前进，输入或发送后重置游标；修复历史浏览中二次 ↑ 因光标位于末尾而不再触发的问题。浏览器验收覆盖 ↑↑↓ 与越过最新清空。`scripts/e2e-chat-history.mjs` 通过。
+- 2026-11-14 备份恢复预览：备份列表接口为每份快照返回议题/项目数量（读取失败时仍列出以便删除）；设置页显示“N 个议题 · M 个项目”，恢复前可判断内容。API 与 UI 验收均断言数量字段/文案。`scripts/e2e-workspace-backups.mjs`、`scripts/e2e-workspace-backups-ui.mjs` 通过。
+- 2026-11-14 命令面板折叠持久化：分组折叠状态按账号存入 localStorage（`linear-lab:command-collapsed:<user>`），不再每次打开重置；读取时过滤非字符串并限 20 个。浏览器验收：折叠首组 → 关闭重开仍折叠 → 刷新后仍折叠。`scripts/e2e-command-collapse.mjs` 通过。
+- 2026-11-14 通知搜索高亮：收件箱搜索时，副标题中的项目名/议题标题命中词用 `<mark>` 高亮（复用 `highlightSegments`，大小写不敏感）；浏览器验收搜索项目名与议题名后均出现命中标记。`scripts/e2e-inbox-search.mjs` 通过。
+- 2026-11-14 设置页搜索：侧栏新增“查找设置”，按本地化名称或 key 过滤分区；无匹配提示；点击结果直接进入对应设置页；Esc 清空。浏览器验收：搜索“通知”只剩通知分区并可进入，乱码关键字显示无匹配。`scripts/e2e-settings-search.mjs` 通过。
+- 2026-11-14 通知归档自动清理：归档超过 30 天的通知在加载时删除（活跃通知与近期归档保留），判断为纯函数；浏览器验收构造 40 天归档/2 天归档/活跃三条，加载后仅旧归档消失。`scripts/regression.mjs`、`scripts/e2e-notification-retention.mjs` 通过。
+- 2026-11-14 列表分组折叠持久化：`collapsedGroups` 纳入视图偏好（`VIEW_KEY`），读取时过滤非字符串并限 40 个；刷新后折叠状态保留，展开后同样写回。浏览器验收：折叠 todo → 存储含 todo → 刷新仍折叠 → 展开清空。`scripts/e2e-view-collapsed.mjs` 通过。
+- 2026-11-14 看板列展开持久化：每列“显示更多”的展开状态按账号写入 localStorage（`linear-lab:board-expanded:<user>`），刷新后保留；首次访问仍默认 60 条。浏览器验收：展开 todo 列 → 卡片增加 → 刷新后“显示更多”不再出现。`scripts/e2e-board-expanded.mjs` 通过。
+- 2026-11-14 会话导出验收：确认 Markdown/JSON 导出入口在会话有消息时出现；浏览器验收通过注入会话（`chat:<id>` 键）验证两个入口与点击不报错；同时修正测试对本地化 `aria-label`（导出为 Markdown/JSON）的匹配。`scripts/e2e-chat-export.mjs` 通过。
+- 2026-11-14 Agent 工具白名单：审批卡新增“总是允许”，把工具名存入按账号的本地白名单；之后的写操作跳过审批（只读工具仍直接执行）；设置 → Agents 显示已允许工具、可单个撤销或清除；策略判断为纯函数。回归覆盖策略/只读/白名单；浏览器验收覆盖列表、撤销与清除。`scripts/regression.mjs`、`scripts/e2e-tool-approvals.mjs` 通过。
+- 2026-11-14 知识库导入验收：端到端覆盖多文件导入（md/txt）、标题去扩展名、`kind=file`、`imported` 标签、内容存储，以及 >500KB 文件被跳过（数量恰为 2）。`scripts/e2e-knowledge-import.mjs` 通过。
+- 2026-11-14 桌面窗口状态：抽出 `desktop/window-state.cjs` 对记忆的尺寸/位置做校验（最小 900×600、不超过屏幕、坐标不在任何显示器时重新居中、保留最大化），主进程在创建窗口时用当前显示器工作区清洗状态。回归覆盖默认/最小/钳制/越界/最大化；`node --check` 通过。`scripts/regression.mjs`。
+- 2026-11-14 改密撤销其他会话：`PATCH /api/auth` 改密成功后撤销除当前外的所有会话；真实账号模式验收：第二个浏览器失效、当前浏览器保持、旧密码 401、新密码可登录。`scripts/e2e-password-sessions.mjs` 通过。
+- 2026-11-14 成员角色管理：成员列表对所有者显示“设为所有者/设为成员”，PATCH 角色后刷新；服务端拒绝把最后一个所有者降级（403 `Keep at least one owner.`）。真实账号模式验收：A 提升 B → A 自降成功 → B 再自降被拒。`scripts/e2e-member-roles.mjs` 通过。
+- 2026-11-14 会话设备信息：会话列表返回 IP 与登录时间，Account 页显示 `UA 描述 · IP · 登录于 · 最近活跃`；真实账号模式验收（端口 4322）注册 + 二次登录 → 2 条会话、UA/IP 正确、`others=1` 撤销 1 条且旧 cookie 失效。`scripts/e2e-sessions-real.mjs` 通过。
+- 2026-11-14 会话管理：登录/注册时记录 UA/IP；`GET /api/accounts/sessions` 返回设备、最近活跃与当前标记（只返回哈希 id，不暴露令牌）；`DELETE ?id=` 撤销单会话、`?others=1` 登出其他；设置 → Account 显示会话区与撤销/登出其他按钮，本机模式明确提示不使用会话。回归覆盖 UA 标签；浏览器验收覆盖会话区与 API。`scripts/regression.mjs`、`scripts/e2e-sessions.mjs` 通过。
+- 2026-11-14 备份补充：`POST /api/workspace/backups {action:'create'}` 立即备份（不受节流）、`DELETE ?id=` 删除单份；设置页新增“立即备份”与每行删除按钮。API 验收覆盖手动创建/删除；UI 验收断言两个入口。`scripts/e2e-workspace-backups.mjs`、`scripts/e2e-workspace-backups-ui.mjs` 通过。
+- 2026-11-14 工作区自动备份：写入工作区前按间隔（默认 60s，`AETHER_BACKUP_INTERVAL_MS` 可调）把上一版快照存到 `workspace-backups/`，每个文件保留最近 10 份；新增 `GET/POST /api/workspace/backups` 列出与恢复（恢复前先备份当前，共享模式仅所有者）；设置 → Preferences 显示最近 6 份与恢复按钮。API 验收覆盖两次写入、列表与回滚；UI 验收覆盖列表与恢复入口。`scripts/e2e-workspace-backups.mjs`、`scripts/e2e-workspace-backups-ui.mjs` 通过。
+- 2026-11-14 邀请码管理：`GET /api/auth` 返回 `signupCodeRequired`，仅所有者获得 `inviteCode`；成员页显示邀请码（只读）与复制邀请码/邀请链接；开启邀请码时链接携带 `?invite=`，注册页自动预填；未开启时提示“注册开放”。回归覆盖链接编码/裁剪/参数解析；浏览器验收覆盖开放状态与复制根链接。`scripts/regression.mjs`、`scripts/e2e-invite.mjs` 通过。
+- 2026-11-14 摘要议题清单：项目摘要新增 `## Issues (n)`，按状态固定顺序（backlog→todo→in_progress→in_review→done→canceled→duplicate）分组，每组标数量并列出 `key · title · priority`，其他项目议题排除，单组最多 100 条。回归覆盖分组、条目与项目隔离；typecheck/build 通过。`scripts/regression.mjs`。
+- 2026-11-14 项目摘要导出：项目页新增“导出摘要”，生成一站式 Markdown（状态/健康/进度与计数/目标/负责人/成员、项目指令、最近 10 条更新及回应、审计动作计数），文件名带 `summary` 与日期。回归覆盖状态/进度/人员/指令/更新/审计计数；浏览器验收断言入口。`scripts/regression.mjs`、`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 审计动作本地化：更新历史行的动作标签按界面语言显示（创建/编辑/删除/点赞/取消点赞/确认/取消确认），筛选键与导出仍保留稳定英文动作。浏览器验收断言本地化标签。`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 审计动作筛选扩充：动作筛选新增“回应”，合并 liked/unliked/acknowledged/unacknowledged；与 created/edited/deleted 及作者、时间组合。浏览器验收覆盖回应过滤只含回应事件、created 过滤不受影响。`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 回应审计：点赞/确认（含取消）写入更新历史，动作细分为 liked/unliked/acknowledged/unacknowledged，列表按动作着色；浏览器验收断言点赞、确认、取消三条动作。`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 审计时间范围：更新历史新增“全部时间/本周/本月”筛选，与动作、作者组合；时间边界为本地周一 00:00 与当月 1 日 00:00，非法时间排除；切换范围重置分页。回归覆盖周/月边界与非法值；浏览器验收覆盖本周 17、本月 20、全部分页。`scripts/regression.mjs`、`scripts/e2e-audit-pagination.mjs` 通过。
+- 2026-11-14 审计分页：更新历史默认 20 条，显示“显示 20 / 总数”，可“加载更多”每次 +20；动作/作者筛选变化时重置。浏览器验收覆盖 25 条审计分批与按钮消失。`scripts/e2e-audit-pagination.mjs` 通过。
+- 2026-11-14 项目更新分页：过滤结果默认展示 20 条，显示“显示 20 / 总数”，可“加载更多”每次 +20；搜索或周筛选变化时重置到第一页。浏览器验收覆盖 25 条分批、按钮消失与筛选重置。`scripts/e2e-update-pagination.mjs` 通过。
+- 2026-11-14 更新搜索高亮：搜索时作者名与正文命中摘要（首个命中前后窗口）用 `<mark>` 高亮，摘要显示在正文上方；高亮为纯函数（大小写不敏感、空查询回退、摘要裁剪）。回归覆盖分段与摘要；浏览器验收断言命中标记。`scripts/regression.mjs`、`scripts/e2e-update-search.mjs` 通过。
+- 2026-11-14 项目更新搜索：更新区新增搜索框，按正文或作者名过滤（与周筛选叠加），显示 `命中/总数`，Esc 或“清除”恢复；无命中提示“没有匹配的更新”。浏览器验收覆盖命中、清除与空结果。`scripts/e2e-update-search.mjs` 通过。
+- 2026-11-14 周报全部导出：回应周报标题栏新增“导出全部周”，一次生成最近几周的汇总 Markdown（周范围、更新数、逐条作者/健康/正文/回应、空周段落），文件名带 `weekly-reports` 与日期。回归覆盖多周分段/计数/空周/文件名；浏览器验收断言入口。`scripts/regression.mjs`、`scripts/e2e-week-filter.mjs` 通过。
+- 2026-11-14 周报导出：每个周条目可导出该周 Markdown（项目、周范围、更新数、逐条日期/作者/健康/正文/点赞确认数），空周明确说明；日期使用本地时区（避免 UTC 跨日）。回归覆盖范围/条目/回应/空周/文件名；浏览器验收断言每周导出入口。`scripts/regression.mjs`、`scripts/e2e-week-filter.mjs` 通过。
+- 2026-11-14 周报点击筛选：点击回应周报中的某一周，只看该周更新（标题显示 `n / total`），再次点击或“清除周筛选”恢复；无更新时提示“这一周没有更新”。浏览器验收覆盖本周/上周筛选与清除。`scripts/e2e-week-filter.mjs` 通过。
+- 2026-11-14 项目回应周报：按本地周（周一为起点）聚合最近 4 周更新的点赞/确认数量与更新数，窗口外与非法日期排除；更新区显示“回应周报”，每周一行。回归覆盖周键/窗口/排序/计数；浏览器验收断言周报渲染。`scripts/regression.mjs`、`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 通知批量多选：收件箱“选择”模式，可逐条勾选、全选/清除、批量归档与批量删除（删除前确认）；Esc 退出，选择模式下行点击切换选择，工具栏显示已选数量。浏览器验收覆盖两条归档与归档视图批量删除。`scripts/e2e-inbox-bulk.mjs` 通过。
+- 2026-11-14 回应者列表：点赞/确认按钮悬停显示成员名（自己显示“你”），无回应显示“还没有回应”，并保留计数与 aria-pressed。浏览器验收断言两种提示。`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 项目更新回应：每条更新支持“点赞”与“确认”，再次点击取消；当前用户已选高亮并显示计数；回应按账号写入更新对象并随快照持久化。浏览器验收覆盖点赞/确认切换、取消与刷新持久。`scripts/e2e-update-reactions.mjs` 通过。
+- 2026-11-14 审计导出复制：历史筛选栏新增复制按钮，把当前筛选的 Markdown 审计写入剪贴板并提示成功/失败；导出选项抽成一处，与下载共用。浏览器验收 mock 剪贴板并断言内容遵循当前筛选。`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目审计 JSON 导出：历史筛选栏新增 JSON 导出（`kind/version/project/exportedAt/filter/records`，记录含作者名映射与摘要），与 Markdown 导出共用当前筛选结果；文件名带 `.json`。回归覆盖元数据、作者映射、空记录；浏览器验收断言两个导出入口。`scripts/regression.mjs`、`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目审计导出：历史筛选栏新增导出按钮，按当前筛选结果生成 Markdown（项目名、项目 id、导出时间、筛选说明、条数与逐条动作/作者/摘要），空结果有明确说明，文件名净化。回归覆盖抬头/条目/空结果/文件名；浏览器验收断言入口存在。`scripts/regression.mjs`、`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目审计筛选：更新历史支持按动作（全部/created/edited/deleted）与作者筛选，无匹配时给出提示；筛选只影响展示，不改变审计数据。浏览器验收覆盖“删除/创建”过滤后的条目类型。`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目更新审计：项目级追加式审计记录发布/编辑/删除（动作、作者、时间、摘要），上限 50 条；更新区可展开“更新历史”，删除后审计仍保留。浏览器验收覆盖三条动作与历史渲染。`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目更新编辑：更新作者可就地修改正文与健康状态；修改最新一条更新的健康会同步项目健康；保存后正文按 Markdown 渲染，刷新持久。浏览器验收覆盖编辑正文/健康、项目健康联动。`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 摘要点击定位与更新通知清理：点击“每日摘要”切到未读视图并把光标落到当天首条未读（无未读则回全部并定位当天首条）；删除项目更新时同步撤回对应通知，避免打开空更新。`scripts/e2e-digest-focus.mjs`、`scripts/e2e-project-update-notify.mjs` 通过。
+- 2026-11-14 每日通知摘要：每天一条 `digest` 通知，按本地日汇总提及/Agent/周期/项目更新数量（排除摘要自身与非法日期），当天无动态不生成；重复调用幂等；收件箱显示“每日摘要”与分项计数，点击不跳转。汇总为纯函数并回归覆盖；浏览器验收验证生成一次、计数正确、刷新可读。`scripts/regression.mjs`、`scripts/e2e-daily-digest.mjs` 通过。
+- 2026-11-14 桌面通知点击跳转：通知携带 `issueId/projectId`；主进程在点击时恢复/聚焦窗口并通过 `aether:notification-click` 通知渲染进程；preload 暴露 `onNotificationClick`；前端按“项目优先、议题其次”打开对应页面。路由判断为纯函数并覆盖空载荷。`scripts/regression.mjs`、`scripts/e2e-desktop-click.mjs` 通过（用注入的假桥验证真实回调链路）。
+- 2026-11-14 免打扰时段：设置 → Notifications 可开启免打扰并选择起止小时（支持跨午夜、相等=全天）；时段内通知照常进入收件箱，桌面通知被抑制；时段判断为纯函数并覆盖跨午夜/全天/非法值回退。`scripts/regression.mjs`、`scripts/e2e-quiet-hours.mjs` 通过。
+- 2026-11-14 通知偏好：设置 → Notifications 按类型（提及/Agent/周期/项目更新）分别开关收件箱与桌面提醒；关闭后 `pushNotification` 不再写入；桌面提醒通过 Electron `aether:notify` 桥接，仅在后台窗口且开关开启时发送；偏好按账号持久化。`scripts/e2e-notification-prefs.mjs` 通过。
+- 2026-11-14 模板导出与导入：设置 → Templates 可导出全部模板为 JSON 包（版本/时间/两类模板），并可导入；导入做结构校验、字段清洗、状态/优先级/健康回退、各 100 条上限与按名称去重；非法 JSON/空包/错误形状给出明确提示。回归覆盖往返/清洗/上限；浏览器验收导入两类模板并验证重复导入不重复。`scripts/regression.mjs`、`scripts/e2e-template-transfer.mjs` 通过。
+- 2026-11-14 项目模板：项目页“存为模板”（说明/项目指令/关联知识/健康）；项目列表“从模板创建”直接生成并打开新项目；设置 → Templates 管理项目模板（删除）。`scripts/e2e-project-templates.mjs` 通过。
+- 2026-11-14 通知键盘导航：收件箱 J/K 移动光标（自动滚动）、Enter 打开、A 归档/恢复、U 切换已读；全局列表快捷键在收件箱让位；行内显示快捷键提示。`scripts/e2e-inbox-keys.mjs` 通过。
+- 2026-11-14 通知搜索与批量清除：收件箱搜索按项目名/议题 key 与标题/通知类型过滤（Esc 清空）；归档视图支持一次性删除全部已归档通知。`scripts/e2e-inbox-search.mjs` 通过。
+- 2026-11-14 项目健康历史：从带健康状态的更新派生时间序列（过滤无观察、按时间排序），项目更新区绘制三点位趋势线与图例，悬停显示状态与日期。回归覆盖序列过滤/排序；浏览器验收断言两个观察点。`scripts/regression.mjs`、`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 项目健康联动与筛选：发布项目更新时同步项目健康状态（详情页显示健康列）；收件箱新增“项目更新”独立筛选，仅显示该类通知。`scripts/e2e-project-updates.mjs`、`scripts/e2e-project-update-notify.mjs` 通过。
+- 2026-11-14 项目更新通知：发布项目更新时写入 `project_update` 通知（含项目名/更新 id/作者），收件箱显示“项目更新”并可直接打开项目页；已读/归档/删除沿用统一操作。`scripts/e2e-project-update-notify.mjs` 通过。
+- 2026-11-14 运行账本导出：每次运行可导出 Markdown（含元数据、摘要、事件时间线）或 JSON；文件名净化；空账本明确说明。回归覆盖转换与文件名，浏览器验收断言导出入口。
+- 2026-11-14 项目更新进入 Agent 上下文：项目对话的系统上下文包含项目说明、指令、健康状态、最近 3 条更新与项目内议题（纯函数，回归覆盖过滤与截断）。
+- 2026-11-14 工作流运行账本：前端/服务端 runner 记录 step/tool/final/error 事件（上限 100，文本截断），API 保存并在历史中展开；取消时记录 error 事件。`scripts/e2e-run-ledger.mjs`、`scripts/e2e-workflow-cancel.mjs` 通过。
+- 2026-11-14 项目更新：项目页发布更新（正文 + 健康状态），时间线展示作者/时间/健康，可删除自己的更新，随项目快照持久化。`scripts/e2e-project-updates.mjs` 通过。
+- 2026-11-14 工作流进度与调度状态：运行中显示“第 n/N 步”与当前工具（工作流卡片 + 任务中心）；工作流页展示服务端调度器运行中/已关闭、最近扫描与运行数量，并修正“需开着页面”的旧文案。`scripts/e2e-workflow-cancel.mjs`（含进度断言）与 `scripts/e2e-scheduler-status.mjs` 通过。
+- 2026-11-14 周期通知：当前周期开始 24h 内与结束前 24h 各生成一次通知（幂等），滚动通知补齐 `cycleId/event`；收件箱按开始/即将结束/滚动显示不同文案与汇总数字。`scripts/e2e-cycle-notices.mjs` 通过。
+- 2026-11-14 服务端写入死锁修复：`updateAether` 不再在锁内调用会加锁的 `writeAether`，抽出未加锁的 `applyAetherPatch`；知识/记忆/工作流/连接器写入恢复即时完成。新增 `scripts/e2e-server-locks.mjs` 覆盖三条路由的超时回归。
+- 2026-11-14 工作流取消：浏览器 runner 用 AbortController 中止当前请求并记录 `canceled`；服务端 runner 每步检查取消标记；新增 `POST /api/agent/workflows/cancel`；工作流卡片与任务中心均可停止。`scripts/e2e-workflow-cancel.mjs`（本地挂起 mock）通过。
+- 2026-11-14 描述粘贴图片：粘贴图片不再插入 base64 文本，而是直接存为议题附件并提示。`scripts/e2e-paste-image.mjs` 通过。
+- 2026-11-14 议题模板：议题 ⋯ 菜单存为模板；命令面板按模板创建（标题/描述/状态/优先级/标签/项目/估点）；设置 → Templates 列表与删除。`scripts/e2e-templates.mjs` 通过。
+- 2026-11-14 看板键盘：卡片可聚焦，Enter 打开，Ctrl+←/→ 跨列移动（自动展开目标列），Ctrl+↑/↓ 同列排序。`scripts/e2e-board-keys.mjs` 通过。
+- 2026-11-14 移动端与可访问性：手机宽度下排序/显示菜单可用；命令面板补齐 dialog/combobox/listbox/option 语义与 aria-activedescendant。`scripts/e2e-a11y-mobile.mjs` 通过。
+- 2026-11-14 通知管理：单条已读/未读、归档/恢复、删除；“已归档”筛选；侧栏未读数排除归档。`scripts/e2e-inbox.mjs` 通过。
+- 2026-11-14 评论 @mention：输入 `@` 出现成员候选（键盘/点击插入 `@handle`），提交解析 mentions 并生成提及通知；评论下显示提及 chip；收件箱新增 全部/未读/提及 筛选与提及图标文案。`scripts/e2e-mentions.mjs` 通过。
+- 2026-11-14 评论删除：自己的评论可删除（确认后移除并记活动）；`scripts/e2e-consistency.mjs` 覆盖。
+- 2026-11-14 数据一致性：项目详情进度改为从议题派生（不再读静态字段）；种子“今天”锚定当天 20:00，路线图/周期不再停在固定日期。
+- 2026-11-14 附件真实上传：议题附件（图片/文本，单文件上限 1.5MB/200KB，每个议题 10 个）与评论附件；真实文件选择、内容存储、缩略图/下载、删除、刷新持久；Agent `get_issue` 可读附件摘要。`scripts/e2e-attachments.mjs` 通过。
+- 2026-11-14 输入法保护：Enter 提交处统一检查 `isComposing`/keyCode 229（Agent 输入、评论、行内新建、命令面板、描述保存、标签与记忆输入等）；组合键回车不再误提交。`scripts/e2e-ime.mjs` 通过。
+- 2026-11-14 命令面板上下文动作：选中议题时提供“标记完成 / 指派给我 / 复制链接 / 删除”，接入批处理与选择清理。`scripts/e2e-command.mjs` 通过。
+- 2026-11-14 实时协作：workspace SSE（`/api/workspace/events`）在他人写入时推送；无本地修改自动拉取，有本地修改显示“其他设备已更新”；409 新增“合并双方”（按 issue.updatedAt 合并 + 其余实体并集）并保留原双选。`scripts/e2e-realtime.mjs` 实测双端。
+- 2026-11-14 桌面更新检查：`desktop/update.cjs` 版本比较与清单校验；`AETHER_UPDATE_URL` 静态源、启动静默检查（一天一次）、Help 菜单手动检查、下载引导；不自动安装。回归覆盖；自动安装与签名仍需发布源与证书。
+- 2026-11-14 默认暗色：首屏内联脚本、store 默认与读取逻辑统一为暗色，浅色作为显式覆盖；浏览器验收断言默认 `data-theme=dark`。
+- 2026-11-14 调度去重：浏览器调度器默认关闭（`NEXT_PUBLIC_AETHER_BROWSER_SCHEDULER=1` 才启用），避免与服务端调度同一窗口重复执行；部署文档补充环境变量。
+- 2026-11-14 连接器：通用 HTTP 连接器（名称/Base URL/令牌），令牌服务端加密且不回传；Settings → Connectors 可增删；Agent 工具 `list_connectors` / `call_connector`；GET/HEAD 直读，POST/PUT/PATCH/DELETE 走审批；路径限定同源、拒绝重定向、明文 http 仅本机、响应截断。API + UI 验收通过（本地 echo 服务真实调用）。
+- 2026-11-14 语义检索（按需重排）：Provider 可选向量模型；`/api/agent/embeddings` 代理复用自有密钥并限制批量；知识检索先关键词取候选、再向量余弦重排，未配置/失败自动回退关键词；命中返回 `id#chunk` 单节引用。回归覆盖余弦、回退与分块。无持久向量库，索引按需计算。
+- 2026-11-14 任务中心：顶部汇总运行中的智能体/工作流、失败重试、打开与停止；`scripts/e2e-tasks.mjs` 通过。
+- 2026-11-14 文档产物：回答存为文档、文档列表/编辑/Markdown 预览/下载/删除、命令面板与侧栏入口；`scripts/e2e-documents.mjs` 通过。
+- 2026-11-14 大列表与可访问性：列表 120 行窗口 + 加载更多、看板每列 60 张 + 展开、抽屉 dialog 语义、prefers-reduced-motion；`scripts/e2e-perf.mjs` 通过。
+- 2026-11-14 架构子项：调度器租约改为 `wx` 独占创建（跨进程单持有者）、知识检索分块并输出可引用的 `id#chunk`、`read_knowledge` 支持读取单块；回归覆盖 CJK 分词、重叠块与标题优先排序。
+- 2026-11-14 议题效率：按状态/负责人/无分组；截止日期筛选（逾期/本周/无日期）与可移除筛选芯片；评论草稿按议题持久化、关闭重开不丢；自己的评论可原地编辑；`scripts/e2e-issues.mjs` 通过。
+- 2026-11-14 同步可靠性：可见状态机（保存中/已保存/离线/冲突），409 不再静默覆盖，本机与服务端二选一；`scripts/e2e-sync.mjs` 通过。
+- 2026-11-14 保存视图：当前筛选/排序/布局命名保存、应用、覆盖、删除、`?view=` 分享；`scripts/e2e-views.mjs` 通过。
+- 2026-11-14 对话质量：代码块复制、回答点赞/点踩（随会话持久化）、浏览器语音输入（能力检测，不支持时隐藏）；`scripts/e2e-feedback.mjs` 通过。
+- 2026-11-13 P0 会话可靠性：按会话草稿（含刷新与切换）、附件单项移除、指定轮次编辑、真正重新生成、从任意用户轮分支、刷新中断标注；`npm run test` + `scripts/e2e.mjs` 通过。
+- 2026-11-13 P1 项目空间：项目指令、知识选择、项目会话与上下文注入，项目内新建议题自动归属；`scripts/e2e-project.mjs` 通过。
+- 2026-11-13 工作区可靠性（部分）：统一撤销/重做（Ctrl/Cmd+Z）、批量操作单条历史、全局议题深链 `?issue=` 与浏览器前进后退、服务端 Aether 原子更新、同步 409 去掉版本 0 绕过、按账号隔离浏览器存储。
+- 2026-11-13 对话体验：代码块复制、Markdown 外链协议收敛、运行历史跨设备同步、上下文占比与账单 token 分离、运行中断可见。
+- 2026-11-13 工具链：`npm run test` / `npm run improve` / `npm run improve:check` / `scripts/e2e*.mjs` / `improve.ps1`。
+
+- 2026-11-13 十二轮基础迭代（Provider、工具、记忆、知识库、工作流、服务端调度、设计系统）— 见 docs/09
+- 2026-11-13 模型菜单（内联切换 + 筛选）— tsc/build + 截图 219/221
+- 2026-11-13 本地指令 `/clear` `/new` — tsc/build + 截图 220

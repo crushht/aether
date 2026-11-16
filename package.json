@@ -1,0 +1,69 @@
+{
+  "name": "aether",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Aether — an agent-centric workspace: Linear-level issue tracking with a bring-your-own-model agent, knowledge base and workflows.",
+  "main": "desktop/main.cjs",
+  "author": "Aether contributors",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev -p 4321",
+    "build": "next build",
+    "start": "next start -p 4321",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/regression.mjs",
+    "i18n": "node scripts/i18n-check.mjs --strict --hardcoded",
+    "csp:check": "node scripts/csp-check.mjs",
+    "improve": "node scripts/improve.mjs --agent",
+    "improve:once": "node scripts/improve.mjs --once",
+    "improve:check": "node scripts/improve.mjs --check",
+    "desktop": "node scripts/run-electron.mjs",
+    "desktop:dev": "node scripts/desktop-dev.mjs",
+    "icon": "node scripts/make-icon.mjs",
+    "dist": "node scripts/build-desktop.mjs",
+    "dist:dir": "node scripts/build-desktop.mjs --dir"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.544.0",
+    "next": "^15.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^45.3.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.29",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crushht/aether.git"
+  },
+  "homepage": "https://github.com/crushht/aether",
+  "bugs": {
+    "url": "https://github.com/crushht/aether/issues"
+  },
+  "keywords": [
+    "agent",
+    "issue-tracker",
+    "linear",
+    "electron",
+    "nextjs",
+    "local-first",
+    "llm",
+    "workflow"
+  ]
+}
