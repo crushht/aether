@@ -16,7 +16,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![Electron](https://img.shields.io/badge/Electron-45-47848f?logo=electron)](https://www.electronjs.org)
 
-[快速开始](#快速开始) · [功能](#功能) · [Agent](#agent-能做什么) · [架构](#架构) · [路线图](#路线图)
+[快速开始](#快速开始) · [功能](#功能) · [Agent](#agent-能做什么) · [架构](#架构) · [路线图](#路线图) · [**下载桌面版**](https://github.com/crushht/aether/releases/latest)
 
 </div>
 
