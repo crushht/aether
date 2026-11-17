@@ -8,6 +8,7 @@ import { isModelReady, useModelTarget } from '@/lib/agent/workspace';
 import { useView } from '@/lib/store/view';
 import type { AgentLogEntry, AgentPendingRow } from '@/lib/agent/types';
 import { isToolCard } from '@/lib/agent/tool-cards';
+import { sourceHref, sourceKey, sourceLabel } from '@/lib/agent/citations';
 import { ToolCardPanel } from '@/components/agent/chat/tool-card';
 import { PRIORITIES, STATUSES, type Issue } from '@/lib/types';
 import { usePeople } from '@/lib/people';
@@ -180,6 +181,26 @@ export function LogRow({ item }: { item: AgentLogEntry }) {
             if (issue) useView.getState().openIssue(issue.id);
           }}
         />
+        {Array.isArray(item.sources) && item.sources.length ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-citations>
+            {item.sources.map((source) => {
+              const href = sourceHref(source);
+              if (!href) return null;
+              return (
+                <a
+                  key={sourceKey(source)}
+                  href={href}
+                  data-citation={source.kind}
+                  title={source.title}
+                  {...(source.kind === 'web' ? { target: '_blank', rel: 'noreferrer' } : {})}
+                  className="max-w-[200px] truncate rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[11px] text-t3 transition-colors hover:bg-[var(--bg-selected)] hover:text-t1"
+                >
+                  {sourceLabel(source)}
+                </a>
+              );
+            })}
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={async () => {

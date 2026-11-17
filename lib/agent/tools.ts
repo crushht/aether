@@ -7,6 +7,7 @@ import { chunkText } from './search';
 import { hybridRankKnowledge } from './semantic';
 import { inspectCardFromResponse, structureLines } from './inspect-report';
 import { buildSearchCard, type ToolCard } from './tool-cards';
+import type { ChatSource } from './types';
 
 export interface ToolSpec {
   name: string;
@@ -20,6 +21,8 @@ export interface ToolOutcome {
   summary: string;
   /** structured receipt for the transcript card; only some tools produce one */
   card?: ToolCard;
+  /** outside material this call actually opened, for the answer's sources */
+  sources?: ChatSource[];
 }
 
 const statusKeys = STATUSES.map((status) => status.key);
@@ -622,18 +625,26 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
           ? ok(`Nothing matches "${query}". The knowledge base has ${items.length} entries.`)
           : ok('The knowledge base is empty.');
       }
-      return ok(
-        scored
-          .map(({ item, chunk }) => {
-            const ref = chunk ? `${item.id}#${chunk.chunkId}` : item.id;
-            const body = (chunk?.text ?? item.content).replace(/\s+/g, ' ').slice(0, 260);
-            return `- ${ref} · ${item.title} (${item.kind})${item.tags.length ? ` · ${item.tags.join(', ')}` : ''}\n  ${body}`;
-          })
-          .join('\n') +
-          `\n\nSearch mode: ${result.mode === 'hybrid' ? 'lexical + embedding rerank' : 'lexical (no embedding model configured)'}.` +
-          '\nUse read_knowledge with the full "id#chunk" reference to read that section.',
-        `${scored.length} 条知识命中${result.mode === 'hybrid' ? '（语义）' : ''}`,
-      );
+      const knowledgeSources = scored.slice(0, 5).map(({ item, chunk }) => ({
+        kind: 'knowledge' as const,
+        title: item.title,
+        ref: chunk ? `${item.id}#${chunk.chunkId}` : item.id,
+      }));
+      return {
+        ...ok(
+          scored
+            .map(({ item, chunk }) => {
+              const ref = chunk ? `${item.id}#${chunk.chunkId}` : item.id;
+              const body = (chunk?.text ?? item.content).replace(/\s+/g, ' ').slice(0, 260);
+              return `- ${ref} · ${item.title} (${item.kind})${item.tags.length ? ` · ${item.tags.join(', ')}` : ''}\n  ${body}`;
+            })
+            .join('\n') +
+            `\n\nSearch mode: ${result.mode === 'hybrid' ? 'lexical + embedding rerank' : 'lexical (no embedding model configured)'}.` +
+            '\nUse read_knowledge with the full "id#chunk" reference to read that section.',
+          `${scored.length} 条知识命中${result.mode === 'hybrid' ? '（语义）' : ''}`,
+        ),
+        sources: knowledgeSources,
+      };
     }
 
     case 'read_knowledge': {
@@ -650,15 +661,21 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       if (chunkId !== undefined) {
         const chunk = chunkText(item.content).find((entry) => entry.chunkId === chunkId);
         if (!chunk) return fail(`Chunk ${chunkId} was not found in ${id}.`);
-        return ok(
-          `${item.title}${item.url ? ` · ${item.url}` : ''} · section ${chunk.chunkId} (offset ${chunk.start})\n\n${chunk.text.slice(0, 8_000)}`,
-          `${item.title} §${chunk.chunkId}`,
-        );
+        return {
+          ...ok(
+            `${item.title}${item.url ? ` · ${item.url}` : ''} · section ${chunk.chunkId} (offset ${chunk.start})\n\n${chunk.text.slice(0, 8_000)}`,
+            `${item.title} §${chunk.chunkId}`,
+          ),
+          sources: [{ kind: 'knowledge' as const, title: item.title, ref: rawId }],
+        };
       }
-      return ok(
-        `${item.title}${item.url ? ` · ${item.url}` : ''}\n\n${item.content.slice(0, 8_000)}`,
-        `${item.title}（${item.chars} 字）`,
-      );
+      return {
+        ...ok(
+          `${item.title}${item.url ? ` · ${item.url}` : ''}\n\n${item.content.slice(0, 8_000)}`,
+          `${item.title}（${item.chars} 字）`,
+        ),
+        sources: [{ kind: 'knowledge' as const, title: item.title, ref: id }],
+      };
     }
 
     case 'list_workflows': {
@@ -751,17 +768,25 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
       const hits = json.results ?? [];
       if (!hits.length) return ok(`Nothing found for "${query}".`);
       const card = buildSearchCard({ query, provider: json.provider, results: hits });
-      return ok(
-        [
-          ...hits.map(
-            (hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}${hit.snippet ? `\n   ${hit.snippet.slice(0, 240)}` : ''}`,
-          ),
-          '',
-          `Read one with fetch_url before quoting it. Source: ${json.provider ?? 'web search'}.`,
-        ].join('\n'),
-        `${hits.length} 条网页结果`,
-        card ?? undefined,
-      );
+      return {
+        ...ok(
+          [
+            ...hits.map(
+              (hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}${hit.snippet ? `\n   ${hit.snippet.slice(0, 240)}` : ''}`,
+            ),
+            '',
+            `Read one with fetch_url before quoting it. Source: ${json.provider ?? 'web search'}.`,
+          ].join('\n'),
+          `${hits.length} 条网页结果`,
+          card ?? undefined,
+        ),
+        // the hits themselves are what an answer may cite; the card is the
+        // expandable receipt, this is the short list under the answer
+        sources: hits
+          .filter((hit) => Boolean(hit.url))
+          .slice(0, 5)
+          .map((hit) => ({ kind: 'web' as const, title: hit.title || hit.url, url: hit.url })),
+      };
     }
 
     case 'fetch_url': {
@@ -793,18 +818,21 @@ export async function runTool(name: string, rawArgs: Record<string, unknown>): P
         .slice(0, 12)
         .map((link) => `- ${link.text} → ${link.href}`)
         .join('\n');
-      return ok(
-        [
-          page.title,
-          page.url,
-          '',
-          page.text.slice(0, maxChars) + (page.text.length > maxChars ? '\n… (clipped)' : ''),
-          links ? `\nlinks:\n${links}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        `${page.title}（${page.chars} 字）`,
-      );
+      return {
+        ...ok(
+          [
+            page.title,
+            page.url,
+            '',
+            page.text.slice(0, maxChars) + (page.text.length > maxChars ? '\n… (clipped)' : ''),
+            links ? `\nlinks:\n${links}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          `${page.title}（${page.chars} 字）`,
+        ),
+        sources: [{ kind: 'web' as const, title: page.title || page.url, url: page.url }],
+      };
     }
 
     case 'inspect_artifact': {

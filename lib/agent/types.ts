@@ -212,6 +212,23 @@ export interface AgentAttachment {
 
 export type AgentLogKind = 'user' | 'assistant' | 'tool' | 'final' | 'error' | 'status';
 
+/**
+ * One place an answer came from. Derived from the tool receipts of the same
+ * run — a knowledge entry that was searched or read, a page that was searched
+ * or fetched — so the bubble can cite without trusting the model to write
+ * links itself.
+ */
+export interface ChatSource {
+  kind: 'web' | 'knowledge';
+  title: string;
+  /** web */
+  url?: string;
+  /** knowledge: `id` or `id#chunk` */
+  ref?: string;
+  /** host for web, kind label for knowledge */
+  detail?: string;
+}
+
 export interface AgentLogEntry {
   id: string;
   kind: AgentLogKind;
@@ -222,11 +239,14 @@ export interface AgentLogEntry {
   args?: Record<string, unknown>;
   /** structured receipt (search hits, artifact report) — expandable in the chat */
   card?: ToolCard;
+  /** where a final answer came from; at most a handful, deduplicated */
+  sources?: ChatSource[];
   attachments?: AgentAttachment[];
   /** thumbs on a final answer; local-first, mirrored with the conversation */
   feedback?: 'up' | 'down';
   at: number;
 }
+
 
 /** A write tool parked until the user approves it. */
 export interface AgentPendingRow {

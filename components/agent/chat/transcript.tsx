@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useT } from '@/lib/use-t';
+import { sourceHref, sourceKey, sourceLabel } from '@/lib/agent/citations';
 import { cn } from '@/lib/utils';
 import { Markdown } from '@/components/issue/markdown';
 import { LogRow } from '@/components/agent/agent-panel';
@@ -237,6 +238,27 @@ export function FinalAnswer({
         </span>
         <div className="min-w-0 flex-1 pt-[1px]">
           <Markdown text={item.text} className="prose-compact" onIssue={onIssueLink} />
+          {Array.isArray(item.sources) && item.sources.length ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" data-citations>
+              <span className="text-[11px] text-t4">{t('Sources')}</span>
+              {item.sources.map((source) => {
+                const href = sourceHref(source);
+                if (!href) return null;
+                return (
+                  <a
+                    key={sourceKey(source)}
+                    href={href}
+                    data-citation={source.kind}
+                    title={source.title}
+                    {...(source.kind === 'web' ? { target: '_blank', rel: 'noreferrer' } : {})}
+                    className="max-w-[220px] truncate rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[11.5px] text-t3 transition-colors hover:bg-[var(--bg-selected)] hover:text-t1"
+                  >
+                    {sourceLabel(source)}
+                  </a>
+                );
+              })}
+            </div>
+          ) : null}
           <div className="mt-2 flex items-center gap-1 opacity-60 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
             <button
               type="button"

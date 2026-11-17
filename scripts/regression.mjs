@@ -621,6 +621,32 @@ async function run() {
   assert.ok(mailCopy.subject.includes('登录') && mailCopy.text.includes('123456') && mailCopy.html.includes('123456'));
   console.log('PASS email rules: address, code shape, masking, cooldown, live check and mail copy');
 
+  // Answer sources: collected from tool receipts, never written by the model.
+  const toolCards = await loadTs(path.resolve('lib/agent/tool-cards.ts'));
+  const citations = await loadTs(path.resolve('lib/agent/citations.ts'), { './tool-cards': toolCards });
+  const web = { kind: 'web', title: 'Linear docs', url: 'https://linear.app/docs' };
+  const knowledge = { kind: 'knowledge', title: 'Release checklist', ref: 'k12#3' };
+  assert.deepEqual(citations.addSources([], [web, knowledge]).length, 2);
+  assert.equal(citations.addSources([web], [web]).length, 1, 'the same page is cited once');
+  assert.equal(citations.addSources([], [web, web, { ...web, url: 'https://linear.app/docs#x' }]).length, 2);
+  assert.equal(
+    citations.addSources([], Array.from({ length: 9 }, (_, index) => ({ kind: 'web', title: `p${index}`, url: `https://e.dev/${index}` }))).length,
+    citations.SOURCE_LIMIT,
+    'sources are capped',
+  );
+  assert.deepEqual(citations.addSources([], [{ kind: 'web', title: 'no url' }]), [], 'a web source needs http(s)');
+  assert.deepEqual(citations.addSources([], [{ kind: 'web', title: 'ftp', url: 'ftp://e.dev/x' }]), []);
+  assert.deepEqual(citations.addSources([], [{ kind: 'knowledge', title: '' }]), [], 'a knowledge source needs a title');
+  assert.equal(citations.sourceLabel(web), 'linear.app');
+  assert.equal(citations.sourceHref(web), 'https://linear.app/docs');
+  assert.equal(citations.sourceHref(knowledge), '/knowledge?id=k12');
+  assert.equal(
+    citations.sourcesMarkdown([web, knowledge]),
+    '- [Linear docs](https://linear.app/docs)\n- Knowledge: Release checklist',
+  );
+  assert.ok(citations.isChatSource(knowledge) && !citations.isChatSource({ kind: 'file', title: 'x' }));
+  console.log('PASS citations: de-duplication, cap, validation, labels and markdown');
+
   // Filter query language: `status:todo assignee:me label:Bug -priority:low`.
   const query = await loadTs(path.resolve('lib/query.ts'));
   assert.deepEqual(query.tokenize('status:todo "two words" label:"needs design"'), [

@@ -1179,6 +1179,7 @@ export const zh: Record<string, string> = {
   'This workspace only mails addresses its owner allows.': '这个工作区只给所有者允许的地址发验证码。',
   'Unknown filter: {q}': '未知筛选：{q}',
   'Filter query': '筛选表达式',
+  'Sources': '来源',
   'status:todo · assignee:me · -label:Bug': 'status:todo · assignee:me · -label:Bug',
   'status:todo · assignee:me · label:Bug · -priority:low · due:overdue · "exact phrase"': 'status:todo · assignee:me · label:Bug · -priority:low · due:overdue · “完整短语”',
   'Ask again in {s}s.': '请 {s} 秒后再试。',

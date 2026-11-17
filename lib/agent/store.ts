@@ -12,6 +12,7 @@ import { chat, ProviderError } from './provider';
 import { compactMessages } from './compact';
 import { getLocale, translate } from '@/lib/i18n';
 import { isReadOnlyToolCall, previewTool, runTool, toolSchemas, workspaceContext, workspaceSummary } from './tools';
+import { addSources, sourcesMarkdown } from './citations';
 import { chatKey, useChats } from './chats';
 import { isModelReady, resolveModelTarget, useWorkspace } from './workspace';
 import {
@@ -23,6 +24,7 @@ import {
   type AgentRunRecord,
   type AgentSettings,
   type AgentUsage,
+  type ChatSource,
   type ModelRouteKey,
 } from './types';
 
@@ -702,6 +704,9 @@ export const useAgent = create<AgentState>((set, get) => {
 
       let toolCount = 0;
       const toolLines: string[] = [];
+      // Everything the tools actually opened this run; the final bubble cites
+      // it, and an issue comment gets the same list as Markdown.
+      let sources: ChatSource[] = [];
 
       try {
         for (let step = 0; step < Math.max(1, target.maxSteps); step += 1) {
@@ -758,7 +763,7 @@ export const useAgent = create<AgentState>((set, get) => {
               // the streamed copy becomes the final bubble; status rows were scaffolding
               log: [
                 ...session.log.filter((item) => item.kind !== 'status' && !streamedIds.includes(item.id)),
-                entry('final', result.content.trim() || '(no answer)'),
+                entry('final', result.content.trim() || '(no answer)', sources.length ? { sources } : undefined),
               ],
             }));
             if (toolCount > 0 && issue) {
@@ -766,12 +771,14 @@ export const useAgent = create<AgentState>((set, get) => {
               useData.getState().pushNotification({ issueId: targetId, kind: 'agent', count: toolCount });
               const shown = toolLines.slice(0, 5);
               const extra = toolLines.length - shown.length;
+              const references = sourcesMarkdown(sources);
               const body = [
                 `**Agent session** · ${toolCount} tool call${toolCount > 1 ? 's' : ''}`,
                 ...shown.map((line) => `- ${line}`),
                 ...(extra > 0 ? [`- … +${extra} more`] : []),
                 '',
                 result.content.trim() || '(no answer)',
+                ...(references ? ['', references] : []),
               ].join('\n');
               useData.getState().addComment(targetId, 'agent', body);
             }
@@ -829,6 +836,7 @@ export const useAgent = create<AgentState>((set, get) => {
             const outcome = await runTool(call.name, { ...call.args, targetId, ...(isChat && chatProjectId ? { projectId: chatProjectId } : {}) });
             toolCount += 1;
             usage.tools = toolCount;
+            sources = addSources(sources, outcome.sources);
             toolLines.push(`${call.name} · ${outcome.summary}`);
             messages.push({ role: 'tool', toolCallId: call.id, content: outcome.content });
             patch(targetId, (session) => ({
