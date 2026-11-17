@@ -901,6 +901,19 @@ export const useData = create<DataState>((set, get) => {  type Snapshot = Pick<D
       ),
     })),
 
+  snoozeNotification: (id, until) =>
+    set((state) => ({
+      notifications: state.notifications.map((notification) =>
+        notification.id === id
+          ? {
+              ...notification,
+              snoozedUntil:
+                typeof until === 'number' && Number.isFinite(until) ? new Date(until).toISOString() : undefined,
+            }
+          : notification,
+      ),
+    })),
+
   deleteNotification: (id) =>
     set((state) => ({
       notifications: state.notifications.filter((notification) => notification.id !== id),

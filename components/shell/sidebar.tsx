@@ -32,6 +32,7 @@ import { useT } from '@/lib/use-t';
 import { teams } from '@/lib/mock-data';
 import { usePeople } from '@/lib/people';
 import { cn } from '@/lib/utils';
+import { actionableUnread } from '@/lib/notification-snooze';
 import { Avatar, IconButton, Kbd } from '@/components/ui/primitives';
 import { MenuItem, MenuSeparator, Popover } from '@/components/ui/popover';
 import { StatusIcon, TeamIcon } from '@/components/ui/icons';
@@ -159,7 +160,7 @@ export function Sidebar() {
   const starred = issues.filter((i) => i.starred).slice(0, 4);
   const readNotifications = useUI((s) => s.readNotifications);
   const notifications = useData((s) => s.notifications);
-  const inboxCount = notifications.filter((n) => !n.archivedAt && !readNotifications.includes(n.id)).length;
+  const inboxCount = actionableUnread(notifications, readNotifications);
   const { meId, userById } = usePeople();
   const mine = issues.filter((i) => (i.assigneeId === meId || i.creatorId === meId) && i.status !== 'done' && i.status !== 'canceled').length;
 
@@ -309,7 +310,7 @@ export function Sidebar() {
               active={pathname.startsWith('/inbox')}
               badge={
                 inboxCount > 0 ? (
-                  <span className="rounded-full bg-[var(--bg-selected)] px-1.5 text-[12px] font-[510] leading-[16px] text-t3">
+                  <span data-inbox-badge className="rounded-full bg-[var(--bg-selected)] px-1.5 text-[12px] font-[510] leading-[16px] text-t3">
                     {inboxCount}
                   </span>
                 ) : null

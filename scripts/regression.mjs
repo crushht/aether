@@ -1801,6 +1801,44 @@ async function run() {
   assert.equal(deps.dependencyGraph('n0', wide, { depth: 1 }).nodes.length, 2, 'depth 1 is one hop');
   console.log('PASS dependency graph: normalised edges, layering, cycles, caps and geometry');
 
+  // Snooze: a real moment on the clock, and a badge that agrees with the list.
+  const snooze = await loadTs(path.resolve('lib/notification-snooze.ts'));
+  const satAfternoon = +new Date(2026, 10, 14, 15, 30); // Sat 2026-11-14 15:30 local
+  const mondayMorning = +new Date(2026, 10, 16, 8, 30); // Mon 2026-11-16 08:30 local
+  const mondayAfternoon = +new Date(2026, 10, 16, 15, 30); // Mon 2026-11-16 15:30 local
+  assert.equal(snooze.snoozeUntil('hour', satAfternoon), satAfternoon + 3_600_000);
+  const tomorrow = new Date(snooze.snoozeUntil('tomorrow', satAfternoon));
+  assert.equal(tomorrow.getDate(), 15, 'tomorrow is the next morning');
+  assert.equal(tomorrow.getHours(), 9);
+  const todayMorning = new Date(snooze.snoozeUntil('tomorrow', mondayMorning)); // Mon 08:30 → still before 09:00
+  assert.equal(todayMorning.getDate(), 16);
+  assert.equal(todayMorning.getHours(), 9, 'before nine, the next morning is today');
+  const nextMonday = new Date(snooze.snoozeUntil('week', satAfternoon));
+  assert.equal(nextMonday.getDay(), 1, 'a week nap wakes on a Monday');
+  assert.equal(nextMonday.getDate(), 16);
+  assert.equal(nextMonday.getHours(), 9);
+  const mondayNext = new Date(snooze.snoozeUntil('week', mondayAfternoon));
+  assert.equal(mondayNext.getDate(), 23, 'after nine on a Monday, the next Monday is a week away');
+  const noClock = new Date(snooze.snoozeUntil('hour', Number.NaN));
+  assert.ok(!Number.isNaN(noClock.getTime()), 'an unreadable clock still yields a real moment');
+
+  const stamp = (hours) => new Date(Date.now() + hours * 3_600_000).toISOString();
+  const notice = (id, extra = {}) => ({ id, archivedAt: undefined, snoozedUntil: undefined, ...extra });
+  const napping = notice('n1', { snoozedUntil: stamp(2) });
+  const awake = notice('n2', { snoozedUntil: stamp(-2) });
+  const broken = notice('n3', { snoozedUntil: 'not a date' });
+  const archived = notice('n4', { archivedAt: new Date().toISOString() });
+  assert.equal(snooze.isSnoozed(napping), true);
+  assert.equal(snooze.isSnoozed(awake), false, 'a nap that ran out is back');
+  assert.equal(snooze.isSnoozed(broken), false, 'an unreadable date hides nothing');
+  assert.equal(snooze.isSnoozed(notice('n5')), false);
+  assert.deepEqual(snooze.withoutSnoozed([napping, awake, broken]).map((row) => row.id), ['n2', 'n3']);
+  assert.deepEqual(snooze.onlySnoozed([napping, awake, broken]).map((row) => row.id), ['n1']);
+  assert.equal(snooze.actionableUnread([napping, awake, broken, archived], ['n2']), 1, 'only the awake, unread, unarchived item counts');
+  assert.equal(snooze.actionableUnread([napping], []), 0, 'a napping item is not unread');
+  assert.equal(snooze.SNOOZE_CHOICES.length, 3);
+  console.log('PASS snooze: wake moments, list filtering and a badge that matches the list');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

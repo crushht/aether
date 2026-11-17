@@ -66,6 +66,8 @@ export interface DataState {
   pushNotification: (input: Omit<AppNotification, 'id' | 'createdAt'>) => void;
   /** hide one notification from the inbox, or bring it back */
   setNotificationArchived: (id: string, archived: boolean) => void;
+  /** hide until `until` (epoch ms); null wakes it up now */
+  snoozeNotification: (id: string, until: number | null) => void;
   deleteNotification: (id: string) => void;
   createProject: (input: { name: string; summary?: string; status?: ProjectStatus }) => Project;
   setProjectStatus: (id: string, status: ProjectStatus) => void;

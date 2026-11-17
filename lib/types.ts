@@ -125,6 +125,8 @@ export interface AppNotification {
   digest?: { total: number; counts: Record<string, number> };
   /** hidden from the inbox but kept in the snapshot */
   archivedAt?: string;
+  /** hidden until this moment (ISO); the inbox comes back on its own */
+  snoozedUntil?: string;
   createdAt: string;
 }
 

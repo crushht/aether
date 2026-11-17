@@ -41,8 +41,18 @@ try {
   await evaluate(page, `document.querySelector('[data-notification-menu]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`);
   await wait(150);
   assert.ok(await evaluate(page, `!!document.querySelector('[data-menu-action="read"][data-menu-active="true"]')`), 'ArrowDown moves the highlight');
-  await evaluate(page, `document.querySelector('[data-notification-menu]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`);
+  // The menu grew three snooze entries; walk to Archive by its own action name
+  // so the test never depends on how many items sit in front of it.
+  const archiveIndex = await evaluate(
+    page,
+    `[...document.querySelectorAll('[data-notification-menu] [data-menu-action]')].findIndex((el) => el.getAttribute('data-menu-action') === 'archive')`,
+  );
+  assert.ok(archiveIndex > 1, `archive must sit after the snooze choices, got index ${archiveIndex}`);
+  for (let step = 1; step < archiveIndex; step += 1) {
+    await evaluate(page, `document.querySelector('[data-notification-menu]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`);
+  }
   await wait(150);
+  assert.ok(await evaluate(page, `!!document.querySelector('[data-menu-action="archive"][data-menu-active="true"]')`), 'ArrowDown walks the whole menu');
   await evaluate(page, `document.querySelector('[data-notification-menu]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
   await wait(400);
   assert.ok(await evaluate(page, `window.__AETHER_DATA__.getState().notifications.find((n) => n.id === '${id}')?.archivedAt`), 'Enter must run the highlighted action');

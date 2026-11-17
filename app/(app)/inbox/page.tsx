@@ -25,16 +25,18 @@ import { StatusIcon } from '@/components/ui/icons';
 import { useT } from '@/lib/use-t';
 import { relativeTime, cn, isEditableTarget } from '@/lib/utils';
 import { localDayKey } from '@/lib/notification-digest';
+import { SNOOZE_CHOICES, actionableUnread, isSnoozed, onlySnoozed, snoozeUntil, withoutSnoozed } from '@/lib/notification-snooze';
 import { highlightSegments } from '@/lib/highlight';
 import { inboxDay } from '@/lib/inbox-groups';
 
-type InboxFilter = 'all' | 'unread' | 'mentions' | 'updates' | 'archived';
+type InboxFilter = 'all' | 'unread' | 'mentions' | 'updates' | 'snoozed' | 'archived';
 
 export default function InboxPage() {
   const issues = useData((s) => s.issues);
   const notifications = useData((s) => s.notifications);
   const archive = useData((s) => s.setNotificationArchived);
   const remove = useData((s) => s.deleteNotification);
+  const snooze = useData((s) => s.snoozeNotification);
   const read = useUI((s) => s.readNotifications);
   const markRead = useUI((s) => s.markNotificationRead);
   const markUnread = useUI((s) => s.markNotificationUnread);
@@ -57,18 +59,24 @@ export default function InboxPage() {
     // steal focus on every hover-driven re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menu?.id]);
-  const active = notifications.filter((notification) => !notification.archivedAt);
-  const unread = active.filter((notification) => !read.includes(notification.id)).length;
+  // A napping item is not waiting for you: it leaves the list and the badge
+  // together, so the number never sends you to an empty inbox.
+  const now = Date.now();
+  const active = withoutSnoozed(notifications.filter((notification) => !notification.archivedAt), now);
+  const snoozed = onlySnoozed(notifications.filter((notification) => !notification.archivedAt), now);
+  const unread = actionableUnread(notifications, read, now);
   const mentionCount = active.filter((notification) => notification.kind === 'mention').length;
   const updateCount = active.filter((notification) => notification.kind === 'project_update').length;
   const archived = notifications.filter((notification) => notification.archivedAt);
   const needle = query.trim().toLowerCase();
-
   const filtered = notifications.filter((notification) => {
-    if (filter === 'archived') {
+    if (filter === 'snoozed') {
+      if (notification.archivedAt || !isSnoozed(notification, now)) return false;
+    } else if (filter === 'archived') {
       if (!notification.archivedAt) return false;
     } else {
       if (notification.archivedAt) return false;
+      if (isSnoozed(notification, now)) return false;
       if (filter === 'unread' && read.includes(notification.id)) return false;
       if (filter === 'mentions' && notification.kind !== 'mention') return false;
       if (filter === 'updates' && notification.kind !== 'project_update') return false;
@@ -298,6 +306,7 @@ export default function InboxPage() {
             ['unread', t('Unread'), unread],
             ['mentions', t('Mentions'), mentionCount],
             ['updates', t('Updates'), updateCount],
+            ['snoozed', t('Snoozed'), snoozed.length],
             ['archived', t('Archived'), archived.length],
           ] as const
         ).map(([key, label, count]) => (
@@ -413,6 +422,38 @@ export default function InboxPage() {
         const notification = notifications.find((item) => item.id === menu.id);
         if (!notification) return null;
         const unread = !read.includes(notification.id);
+        const napping = isSnoozed(notification, now);
+        const menuItems = [
+          { key: 'open', label: t('Open'), run: () => { setMenu(null); openNotification(notification); }, danger: false },
+          {
+            key: 'read',
+            label: unread ? t('Mark as read') : t('Mark as unread'),
+            run: () => { if (unread) markRead(notification.id); else markUnread(notification.id); setMenu(null); },
+            danger: false,
+          },
+          ...(napping
+            ? [
+                {
+                  key: 'wake',
+                  label: t('Wake now'),
+                  run: () => { snooze(notification.id, null); setMenu(null); },
+                  danger: false,
+                },
+              ]
+            : SNOOZE_CHOICES.map((choice) => ({
+                key: `snooze-${choice.id}`,
+                label: t(choice.label),
+                run: () => { snooze(notification.id, snoozeUntil(choice.id)); setMenu(null); },
+                danger: false,
+              }))),
+          {
+            key: 'archive',
+            label: notification.archivedAt ? t('Restore from archive') : t('Archive'),
+            run: () => { archive(notification.id, !notification.archivedAt); setMenu(null); },
+            danger: false,
+          },
+          { key: 'delete', label: t('Delete'), run: () => { remove(notification.id); setMenu(null); }, danger: true },
+        ];
         return (
           <>
             <div className="fixed inset-0 z-[800]" onMouseDown={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null); }} />
@@ -431,7 +472,7 @@ export default function InboxPage() {
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                   event.preventDefault();
                   const delta = event.key === 'ArrowDown' ? 1 : -1;
-                  setMenu((current) => (current ? { ...current, index: (current.index + delta + 4) % 4 } : current));
+                  setMenu((current) => (current ? { ...current, index: (current.index + delta + menuItems.length) % menuItems.length } : current));
                   return;
                 }
                 if (event.key === 'Enter') {
@@ -440,22 +481,7 @@ export default function InboxPage() {
                 }
               }}
             >
-              {[
-                { key: 'open', label: t('Open'), run: () => { setMenu(null); openNotification(notification); }, danger: false },
-                {
-                  key: 'read',
-                  label: unread ? t('Mark as read') : t('Mark as unread'),
-                  run: () => { if (unread) markRead(notification.id); else markUnread(notification.id); setMenu(null); },
-                  danger: false,
-                },
-                {
-                  key: 'archive',
-                  label: notification.archivedAt ? t('Restore from archive') : t('Archive'),
-                  run: () => { archive(notification.id, !notification.archivedAt); setMenu(null); },
-                  danger: false,
-                },
-                { key: 'delete', label: t('Delete'), run: () => { remove(notification.id); setMenu(null); }, danger: true },
-              ].map((item, index) => (
+              {menuItems.map((item, index) => (
                 <button
                   key={item.key}
                   type="button"
