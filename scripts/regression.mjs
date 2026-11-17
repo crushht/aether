@@ -621,6 +621,31 @@ async function run() {
   assert.ok(mailCopy.subject.includes('登录') && mailCopy.text.includes('123456') && mailCopy.html.includes('123456'));
   console.log('PASS email rules: address, code shape, masking, cooldown, live check and mail copy');
 
+  // Who may receive a code: closed by default, so a relay cannot become a
+  // sender for the whole internet.
+  const mailPolicy = await loadTs(path.resolve('lib/mail-policy.ts'));
+  assert.deepEqual(mailPolicy.parseAllowlist(' A@X.com, @b.io, c.net, not-an-address!, a@x.com '), [
+    'a@x.com',
+    'b.io',
+    'c.net',
+  ]);
+  assert.deepEqual(mailPolicy.parseAllowlist(undefined), []);
+  assert.ok(mailPolicy.allowlistMatches('a@x.com', ['a@x.com']));
+  assert.ok(mailPolicy.allowlistMatches('b@x.com', ['x.com']));
+  assert.ok(!mailPolicy.allowlistMatches('b@y.com', ['x.com']));
+  assert.ok(!mailPolicy.allowlistMatches('nonsense', ['x.com']));
+  const closed = { open: false, allowlist: [] };
+  assert.ok(!mailPolicy.recipientAllowed('new@site.dev', closed, { knownAccount: false, firstAccount: false }));
+  assert.ok(mailPolicy.recipientAllowed('owner@site.dev', closed, { knownAccount: false, firstAccount: true }));
+  assert.ok(mailPolicy.recipientAllowed('member@site.dev', closed, { knownAccount: true, firstAccount: false }));
+  assert.ok(mailPolicy.recipientAllowed('invited@site.dev', { open: false, allowlist: ['site.dev'] }, { knownAccount: false, firstAccount: false }));
+  assert.ok(mailPolicy.recipientAllowed('anyone@else.dev', { open: true, allowlist: [] }, { knownAccount: false, firstAccount: false }));
+  assert.deepEqual(mailPolicy.mailPolicyFromEnv({ AETHER_MAIL_OPEN: '1', AETHER_MAIL_ALLOWLIST: 'A@b.co' }), {
+    open: true,
+    allowlist: ['a@b.co'],
+  });
+  console.log('PASS mail policy: allowlist parsing, domain match, bootstrap and closed default');
+
   const smtp = await loadTs(path.resolve('lib/smtp.ts'));
   const multiline = smtp.takeReply('250-first\r\n250 second\r\nrest');
   assert.equal(multiline.reply.code, 250);

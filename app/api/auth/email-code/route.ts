@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { accountByEmail } from '@/lib/server/accounts';
+import { accountByEmail, listAccounts } from '@/lib/server/accounts';
 import { issueEmailCode } from '@/lib/server/email-codes';
 import { mailerReady, mailerStatus, sendMail } from '@/lib/server/mailer';
 import { codeMailCopy, isEmailAddress, isEmailPurpose, normalizeEmail } from '@/lib/email-rules';
+import { mailPolicyFromEnv, recipientAllowed } from '@/lib/mail-policy';
 import { rateLimit } from '@/lib/server/rate-limit';
 import { recordSecurityEvent } from '@/lib/server/security-audit';
 
@@ -49,6 +50,30 @@ export async function POST(request: Request) {
   if (!isEmailPurpose(purpose)) return NextResponse.json({ ok: false, error: 'Unknown purpose.' }, { status: 400 });
 
   const account = await accountByEmail(email);
+  if (!account) {
+    // A relay configured here would otherwise mail any address on request.
+    // Private by default: known accounts, the first account, or the allowlist.
+    const policy = mailPolicyFromEnv();
+    const accounts = await listAccounts();
+    const allowed = recipientAllowed(email, policy, {
+      knownAccount: false,
+      firstAccount: accounts.length === 0,
+    });
+    if (!allowed) {
+      await recordSecurityEvent({
+        kind: 'code',
+        ok: false,
+        actorEmail: email,
+        ip,
+        ua,
+        detail: `purpose=${purpose} · recipient not allowed`,
+      });
+      return NextResponse.json(
+        { ok: false, error: 'This workspace only mails addresses its owner allows.' },
+        { status: 403 },
+      );
+    }
+  }
   if (purpose === 'signup' && account) {
     await recordSecurityEvent({
       kind: 'code',

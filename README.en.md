@@ -82,7 +82,7 @@ same tools, approvals and audit trail as you:
 - **Two ways in**: email + password, or an **emailed six-digit code** (10 minutes, 5 attempts, 60-second resend cooldown, 6 per hour per address)
 - **Verified sign-up**: with a mail relay configured, new accounts must confirm the mailbox; invite codes still apply
 - **Password reset**: by code, and a reset revokes every other session for that account
-- **Bring your own SMTP**: `AETHER_SMTP_*` in `.env.local` (QQ Mail wants the 16-character authorization code; Gmail, 163 and any STARTTLS relay work too); with no relay the app stays in local password mode
+- **Bring your own SMTP**: host / account / authorization code in Settings → Email; the code is AES-256-GCM encrypted locally and effective immediately (`.env.local` stays as a read-only fallback). **Codes only go to accounts that already exist here and to `AETHER_MAIL_ALLOWLIST`**, so the mailbox never becomes a sender for strangers
 - Chinese HTML + plain-text code mail built in; sending uses `node:tls` with no mail library
 
 ### Collaboration and reliability

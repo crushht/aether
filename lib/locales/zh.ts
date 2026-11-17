@@ -1176,6 +1176,7 @@ export const zh: Record<string, string> = {
   'Local code: {code}': '本地验证码：{code}',
   'Codes are sent from {from} through {host}.': '验证码由 {from} 通过 {host} 发送。',
   'That email has no account here.': '该邮箱在本工作区没有账号。',
+  'This workspace only mails addresses its owner allows.': '这个工作区只给所有者允许的地址发验证码。',
   'Ask again in {s}s.': '请 {s} 秒后再试。',
   'That code is not right — {n} left.': '验证码不正确，还剩 {n} 次机会。',
   'That code expired. Ask for a new one.': '验证码已过期，请重新获取。',
