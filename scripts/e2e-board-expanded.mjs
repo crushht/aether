@@ -26,6 +26,16 @@ try {
     window.__AETHER_VIEW__.setState({ filters: { status: [], priority: [], assigneeId: [], labelIds: [], due: 'any', query: '' }, tab: 'all' });
   })()`);
 
+  // The column has to overflow the first page, and how many cards the fixture
+  // data happens to hold is not something this test should depend on.
+  await evaluate(page, `(() => {
+    const data = window.__AETHER_DATA__.getState();
+    const have = data.issues.filter((issue) => issue.status === 'todo').length;
+    for (let index = have; index < 62; index += 1) {
+      data.createIssue({ title: 'Overflow ' + index, status: 'todo' });
+    }
+  })()`);
+
   assert.ok(await waitFor(`!!document.querySelector('[data-board-more="todo"]')`, 15000), 'todo column must overflow the first page');
   const before = await evaluate(page, `document.querySelectorAll('[data-board-card]').length`);
   await evaluate(page, `document.querySelector('[data-board-more="todo"]')?.click()`);

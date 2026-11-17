@@ -1839,6 +1839,36 @@ async function run() {
   assert.equal(snooze.SNOOZE_CHOICES.length, 3);
   console.log('PASS snooze: wake moments, list filtering and a badge that matches the list');
 
+  // WIP limits: cleaning stored values, counting, and the one line the column shows.
+  const wip = await loadTs(path.resolve('lib/wip-limits.ts'));
+  assert.deepEqual(wip.normalizeWipLimits({ todo: 5, 'in_progress': '3', done: 0, bad: 'x', zero: -1 }), { todo: 5, in_progress: 3 });
+  assert.deepEqual(wip.normalizeWipLimits(null), {});
+  assert.deepEqual(wip.normalizeWipLimits([1, 2]), {}, 'an array is not a map');
+  assert.deepEqual(wip.normalizeWipLimits({ todo: 3.6 }), { todo: 4 }, 'limits are whole cards');
+  assert.deepEqual(wip.normalizeWipLimits({ todo: 500 }), {}, 'out of range is dropped, not clamped');
+  const manyColumns = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`s${index}`, index + 1]));
+  assert.equal(Object.keys(wip.normalizeWipLimits(manyColumns)).length, 12, 'the preference stays small');
+  assert.deepEqual(wip.setWipLimit({ todo: 5 }, 'todo', null), {}, 'clearing deletes the key');
+  assert.deepEqual(wip.setWipLimit({}, 'todo', 4), { todo: 4 });
+  assert.deepEqual(wip.setWipLimit({ todo: 4 }, 'todo', 'nonsense'), {}, 'an unreadable value clears it');
+  assert.deepEqual(wip.setWipLimit({}, '   ', 3), {}, 'an unnamed column is ignored');
+  assert.equal(wip.wipLimitOf({ todo: 5 }, 'todo'), 5);
+  assert.equal(wip.wipLimitOf({ todo: 5 }, 'done'), null);
+  assert.equal(wip.wipLimitOf(undefined, 'todo'), null);
+  const noLimit = wip.wipReadout(3, null);
+  assert.deepEqual(noLimit, { count: 3, limit: null, over: false, at: false, text: '3' });
+  assert.equal(wip.wipReadout(3, 5).text, '3 / 5');
+  assert.equal(wip.wipReadout(5, 5).at, true);
+  assert.equal(wip.wipReadout(5, 5).over, false, 'exactly at the limit is not over it');
+  assert.equal(wip.wipReadout(6, 5).over, true);
+  assert.equal(wip.wipReadout(-2, 5).count, 0);
+  assert.equal(wip.wipReadout(2.7, 5).count, 2);
+  assert.equal(wip.wipHint(wip.wipReadout(6, 5)), 'over by 1');
+  assert.equal(wip.wipHint(wip.wipReadout(5, 5)), 'at the limit');
+  assert.equal(wip.wipHint(wip.wipReadout(2, 5)), '3 left');
+  assert.equal(wip.wipHint(wip.wipReadout(2, null)), '');
+  console.log('PASS WIP limits: normalising, clearing, counting and the header line');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

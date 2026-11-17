@@ -19,6 +19,7 @@ import { PriorityIcon, StatusIcon } from '@/components/ui/icons';
 import { BulkBar } from './bulk-bar';
 import { RowActions, RowStatus } from './row-actions';
 import { countActiveFilters } from '@/lib/selectors';
+import { wipLimitOf, wipReadout } from '@/lib/wip-limits';
 
 function statusColor(status: StatusKey) {
   if (status === 'in_progress') return 'var(--status-progress)';
@@ -157,6 +158,80 @@ const BoardCard = React.memo(function BoardCard({
     </div>
   );
 });
+
+/**
+ * The column counter, and the place a WIP limit is set.
+ *
+ * `3 / 5` when a limit exists, red once the column is past it. A limit never
+ * blocks a drag — people move work for good reasons, and an app that refuses
+ * teaches them to fight it.
+ */
+function WipBadge({ status, count }: { status: string; count: number }) {
+  const t = useT();
+  const limit = useView((s) => wipLimitOf(s.wipLimits, status));
+  const setLimit = useView((s) => s.setWipLimit);
+  const readout = wipReadout(count, limit);
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+
+  const commit = () => {
+    setLimit(status, draft.trim() === '' ? null : Number(draft));
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        data-wip-input={status}
+        value={draft}
+        inputMode="numeric"
+        aria-label={t('Work-in-progress limit')}
+        onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setEditing(false);
+          }
+        }}
+        className="tnum h-[20px] w-[40px] rounded-r4 bg-[var(--bg-selected)] px-1 text-center text-[12px] text-t1 outline-none"
+      />
+    );
+  }
+
+  const hint =
+    readout.limit === null
+      ? t('Set a work-in-progress limit')
+      : readout.over
+        ? t('{n} over the limit', { n: readout.count - readout.limit })
+        : readout.at
+          ? t('At the limit')
+          : t('{n} left', { n: readout.limit - readout.count });
+
+  return (
+    <button
+      type="button"
+      data-wip={status}
+      data-wip-over={readout.over ? '1' : '0'}
+      title={`${t('Work-in-progress limit')} · ${hint}`}
+      onClick={() => {
+        setDraft(readout.limit === null ? '' : String(readout.limit));
+        setEditing(true);
+      }}
+      className={cn(
+        'tnum h-[20px] rounded-r4 px-1 text-[13px] transition-colors hover:bg-[var(--bg-hover)]',
+        readout.over ? 'font-[560] text-[var(--red)]' : readout.at ? 'text-[var(--orange)]' : 'text-t4',
+      )}
+    >
+      {readout.text}
+    </button>
+  );
+}
 
 export function BoardView() {
   const issues = useData((s) => s.issues);
@@ -466,7 +541,7 @@ export function BoardView() {
               <div className="flex h-[40px] shrink-0 items-center gap-2 px-1.5">
                 <StatusIcon status={column.key} size={14} style={{ color: statusColor(column.key) }} />
                 <span className="text-[13.5px] font-[510] text-t2">{t(column.label)}</span>
-                <span className="tnum text-[13px] text-t4">{items.length}</span>
+                <WipBadge status={column.key} count={items.length} />
                 <div className="flex-1" />
                 <Tooltip label={t('New issue in {group}', { group: t(column.label) })}>
                   <IconButton

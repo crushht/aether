@@ -5,6 +5,7 @@ import type { Priority, StatusKey, ViewMode } from '../types';
 import { NOW } from '../mock-data';
 import { currentUserId } from '../session';
 import { useData } from './data';
+import { normalizeWipLimits, setWipLimit as applyWipLimit, type WipLimits } from '../wip-limits';
 
 const ISSUE_HISTORY_KEY = '__aetherIssue';
 
@@ -63,8 +64,12 @@ interface ViewState {
   cursorId: string | null;
   activeIssueId: string | null;
   collapsedGroups: string[];
+  /** board column limits, keyed by status; absent = no limit */
+  wipLimits: WipLimits;
   composing: StatusKey | null;
   setComposing: (status: StatusKey | null) => void;
+  /** set (or clear, with null) one column's work-in-progress limit */
+  setWipLimit: (status: string, limit: number | null) => void;
   setViewMode: (mode: ViewMode) => void;
   setTab: (tab: TabKey) => void;
   setSort: (sort: SortKey) => void;
@@ -103,9 +108,11 @@ export const useView = create<ViewState>((set, get) => ({
   cursorId: null,
   activeIssueId: null,
   collapsedGroups: [],
+  wipLimits: {},
   composing: null,
 
   setComposing: (composing) => set({ composing }),
+  setWipLimit: (status, limit) => set((s) => ({ wipLimits: applyWipLimit(s.wipLimits, status, limit) })),
   setViewMode: (viewMode) => set({ viewMode }),
   setTab: (tab) => set({ tab }),
   setSort: (sort) => set({ sort }),
@@ -233,12 +240,13 @@ export function hydrateView() {
   try {
     const raw = window.localStorage.getItem(VIEW_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as Partial<Pick<ViewState, 'viewMode' | 'sort' | 'groupBy' | 'display' | 'collapsedGroups'>>;
+      const saved = JSON.parse(raw) as Partial<Pick<ViewState, 'viewMode' | 'sort' | 'groupBy' | 'display' | 'collapsedGroups' | 'wipLimits'>>;
       useView.setState({
         viewMode: saved.viewMode === 'board' ? 'board' : 'list',
         sort: saved.sort ?? 'manual',
         groupBy: saved.groupBy === 'assignee' || saved.groupBy === 'none' ? saved.groupBy : 'status',
         display: { ...defaultDisplay, ...(saved.display ?? {}) },
+        wipLimits: normalizeWipLimits(saved.wipLimits),
         collapsedGroups: Array.isArray(saved.collapsedGroups)
           ? saved.collapsedGroups.filter((key): key is string => typeof key === 'string').slice(0, 40)
           : [],
@@ -254,7 +262,8 @@ export function hydrateView() {
       state.sort === previous.sort &&
       state.groupBy === previous.groupBy &&
       state.display === previous.display &&
-      state.collapsedGroups === previous.collapsedGroups
+      state.collapsedGroups === previous.collapsedGroups &&
+      state.wipLimits === previous.wipLimits
     ) {
       return;
     }
@@ -267,6 +276,7 @@ export function hydrateView() {
           groupBy: state.groupBy,
           display: state.display,
           collapsedGroups: state.collapsedGroups,
+          wipLimits: state.wipLimits,
         }),
       );
     } catch {
