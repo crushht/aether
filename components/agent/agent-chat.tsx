@@ -23,10 +23,11 @@ import {
   MicOff,
 } from 'lucide-react';
 import { estimateTokens, useAgent } from '@/lib/agent/store';
+import { lastCompaction } from '@/lib/agent/compact';
 import { useToolApprovals } from '@/lib/store/tool-approvals';
 import { useChatInputHistory } from '@/lib/store/chat-input-history';
 import { chatKey, useChats } from '@/lib/agent/chats';
-import { FIELD_LABEL, useValueLabel } from '@/components/agent/agent-panel';
+import { FIELD_LABEL, LogRow, useValueLabel } from '@/components/agent/agent-panel';
 import { useUI } from '@/lib/store/ui';
 import { useData } from '@/lib/store/data';
 import { useView } from '@/lib/store/view';
@@ -211,7 +212,7 @@ export function AgentChat() {
       stepItems = [];
     };
     for (const item of log) {
-      if (item.kind === 'user' || item.kind === 'final') {
+      if (item.kind === 'user' || item.kind === 'final' || item.kind === 'note') {
         flush();
         out.push({ kind: 'entry', item });
         continue;
@@ -225,6 +226,7 @@ export function AgentChat() {
   const lastStep = timeline.reduce((max, node) => (node.kind === 'step' ? Math.max(max, node.index) : max), 0);
   const billed = session?.usage ? session.usage.promptTokens + session.usage.completionTokens : 0;
   const used = session?.messages.reduce((sum, message) => sum + estimateTokens(message.content), 0) ?? 0;
+  const compaction = React.useMemo(() => lastCompaction(session?.log), [session?.log]);
   const visibleChats = query.trim()
     ? chats.filter((chat) => {
         const needle = query.trim().toLowerCase();
@@ -645,7 +647,7 @@ export function AgentChat() {
                 {running ? <Loader2 size={12} className="animate-spin text-t4" /> : null}
                 <div className="flex-1" />
                 <div className="hidden items-center gap-3 sm:flex">
-                  {used > 0 ? <ContextMeter used={used} total={target?.contextWindow ?? 128_000} usage={session?.usage} /> : null}
+                  {used > 0 ? <ContextMeter used={used} total={target?.contextWindow ?? 128_000} usage={session?.usage} compaction={compaction} /> : null}
                   <div className="relative">
                     <ModelChip onClick={() => setModelMenuOpen((open) => !open)} />
                     {modelMenuOpen ? (
@@ -860,6 +862,8 @@ export function AgentChat() {
                             }
                           }}
                         />
+                      ) : node.item.kind === 'note' || node.item.kind === 'error' || node.item.kind === 'status' ? (
+                        <LogRow key={node.item.id} item={node.item} />
                       ) : (
                         <FinalAnswer
                           key={node.item.id}
@@ -1154,7 +1158,7 @@ export function AgentChat() {
                     <span className="hidden md:inline">{t('Enter sends · Shift+Enter adds a line')}</span>
                     {used > 0 ? (
                       <span className="sm:hidden">
-                        <ContextMeter used={used} total={target?.contextWindow ?? 128_000} usage={session?.usage} />
+                        <ContextMeter used={used} total={target?.contextWindow ?? 128_000} usage={session?.usage} compaction={compaction} />
                       </span>
                     ) : null}
                     {session?.at ? <span>{relativeTime(new Date(session.at).toISOString())}</span> : null}

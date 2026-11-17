@@ -6,6 +6,7 @@
  */
 
 import type { ToolCard } from './tool-cards';
+import type { CompactionReport } from './compact';
 
 /* ------------------------------------------------------------------ routes */
 
@@ -210,7 +211,7 @@ export interface AgentAttachment {
   url?: string;
 }
 
-export type AgentLogKind = 'user' | 'assistant' | 'tool' | 'final' | 'error' | 'status';
+export type AgentLogKind = 'user' | 'assistant' | 'tool' | 'final' | 'error' | 'status' | 'note';
 
 /**
  * One place an answer came from. Derived from the tool receipts of the same
@@ -249,6 +250,8 @@ export interface AgentLogEntry {
   card?: ToolCard;
   /** where a final answer came from; at most a handful, deduplicated */
   sources?: ChatSource[];
+  /** a note row: why the transcript was cut, and by how much */
+  compaction?: CompactionReport;
   attachments?: AgentAttachment[];
   /** thumbs on a final answer; local-first, mirrored with the conversation */
   feedback?: 'up' | 'down';

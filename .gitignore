@@ -63,3 +63,4 @@ Thumbs.db
 .env.local
 .env.*.local
 !docs/checks/268-tool-retry.png
+!docs/checks/269-context-budget.png

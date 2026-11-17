@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, ChevronDown, Copy, HelpCircle, Loader2, RotateCw, Sparkles, Square, Wrench } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, HelpCircle, Loader2, RotateCw, Scissors, Sparkles, Square, Wrench } from 'lucide-react';
 import { useAgent } from '@/lib/agent/store';
 import { isModelReady, useModelTarget } from '@/lib/agent/workspace';
 import { useView } from '@/lib/store/view';
@@ -123,13 +123,15 @@ export function LogRow({
               .join(' · ')
           : `${card.name} · ${card.format} · ${t('entropy {value}', { value: card.entropy.toFixed(2) })}`;
       return (
-        <div data-agent-tool={item.name} data-agent-tool-card={card.kind} {...attrs}>
-          <div className="flex items-start gap-1.5">
+        <div className="flex items-start gap-1.5">
+          {/* the receipt stays a direct child of the card row, so one selector
+              still means "this card's header" */}
+          <div data-agent-tool={item.name} data-agent-tool-card={card.kind} {...attrs} className="min-w-0 flex-1">
             <button
               type="button"
               aria-expanded={cardOpen}
               onClick={() => setCardOpen((value) => !value)}
-              className="flex min-w-0 flex-1 items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
+              className="flex w-full items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
             >
               <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />
               <span className="shrink-0 font-mono text-[12.5px] text-t3">{item.name}</span>
@@ -146,13 +148,13 @@ export function LogRow({
                 className={cn('mt-[3px] shrink-0 text-t4 transition-transform duration-150', cardOpen ? 'rotate-180' : '')}
               />
             </button>
-            {retry}
+            {cardOpen ? (
+              <div className="mb-1 ml-[18px] rounded-r6 bg-[var(--bg-elevated)] px-1.5 py-1 shadow-[inset_0_0_0_1px_var(--line-subtle)]">
+                <ToolCardPanel card={card} />
+              </div>
+            ) : null}
           </div>
-          {cardOpen ? (
-            <div className="mb-1 ml-[18px] rounded-r6 bg-[var(--bg-elevated)] px-1.5 py-1 shadow-[inset_0_0_0_1px_var(--line-subtle)]">
-              <ToolCardPanel card={card} />
-            </div>
-          ) : null}
+          {retry}
         </div>
       );
     }
@@ -202,6 +204,26 @@ export function LogRow({
     return (
       <div data-agent-error className="py-[3px] text-[13px] leading-[1.55] text-[#f08080]">
         {item.text}
+      </div>
+    );
+  }
+
+  if (item.kind === 'note') {
+    // A cut transcript is not the same thing as a model that forgot. The row
+    // says what went, and hovering shows the turns that are now out of window.
+    const report = item.compaction;
+    const detail = report
+      ? [
+          report.keptFrom ? `${t('The window starts at')}: ${report.keptFrom}` : '',
+          ...report.dropped.map((row) => `${row.role} · ${row.tokens} · ${row.preview}`),
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '';
+    return (
+      <div data-agent-note className="flex items-start gap-1.5 py-[3px] text-[12px] leading-[1.5] text-t4" title={detail}>
+        <Scissors size={10} strokeWidth={2} className="mt-[4px] shrink-0" />
+        <span className="min-w-0 flex-1">{item.text}</span>
       </div>
     );
   }

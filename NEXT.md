@@ -15,7 +15,7 @@
 > 一轮一条，纯逻辑 + 回归 + e2e，门禁全绿才提交。
 
 - [x] P1 工具调用可观测性与单次重试：每次工具调用的耗时与尝试次数进 transcript（`2.4s · 第 2 次`），失败行给「重试这次调用」，复用同一 args 重跑并同步会话消息 —— `lib/agent/tool-retry.ts` + 回归 + `scripts/e2e-tool-retry.mjs`
-- [ ] P1 上下文预算解释器：把 `compactMessages` 的裁剪结果变成可读报告（裁掉几轮、多少 token、从哪条开始保留），运行中写一条 note 行，ContextMeter 可展开看明细 —— `compactionReport()` + 回归
+- [x] P1 上下文预算解释器：把 `compactMessages` 的裁剪结果变成可读报告（裁掉几轮、多少 token、从哪条开始保留），运行中写一条 note 行，ContextMeter 可展开看明细 —— `compactionReport()` + 回归
 - [ ] P1 依赖视图：把 `blocks / blocked_by` 画成 SVG 分层有向图（拓扑层级、箭头、成环降级为列表），点节点打开抽屉 —— `lib/dependency-graph.ts` + 回归 + 抽屉页签
 - [ ] P2 模型参数预设：温度/步数做成「精确 / 平衡 / 发散」三档，落在 provider 上，设置页一键切换 —— `lib/agent/model-presets.ts` + 回归
 - [ ] P2 工作流退避重试：失败后 1 / 5 / 15 分钟自动重试，每次尝试写进运行台账 —— `lib/agent/workflow-retry.ts` + 回归
@@ -36,6 +36,7 @@
 
 ## 已完成
 
+- 2026-11-17 上下文预算解释器（agent 成熟度第二条）：裁剪不再是静默的 —— `lib/agent/compact.ts` 拆出 `trimTurns`（被 `compactMessages` 与报告共用，判定只写一遍），新增 `compactionReport`（before/after tokens、被删消息数与轮数、被删消息的 token、最多 8 条预览（角色 + 140 字单行）、保留下来的窗口起点）与 `compactionSummary`（`6 turn(s) · 19 message(s) · 43200 token(s)`）、`lastCompaction`（取最近一条带报告的 note）。运行循环每次请求前算一次报告，第一次真裁剪时写一条 `note` 行（带 `compaction`），transcript 里是独立的一行（不再被塞进步骤组、也不再被当成 final 渲染），悬停列出被裁的轮次与被删内容；ContextMeter 加剪刀标记与「已裁掉 N 轮 / 窗口从这条开始」明细。验证：regression 新增 1 组（`PASS context budget`，覆盖有裁剪 / 无裁剪 / 预览上限 / 新窗口起点 / 孤儿 tool 消息 / note 只加一次 / 摘要格式 / lastCompaction 边界）；`scripts/e2e-context-budget.mjs` 在真实 dev 注入带报告的时间线 —— note 行不在工具步骤里、数字为 6/19/43200、悬停含窗口起点与被删轮次、meter 的 `data-context-trimmed=6` 与 title 三行、去掉 note 后剪刀消失（截图 `docs/checks/269-context-budget.png`）；tsc + eslint(0) + i18n(0 missing / 0 hardcoded) + build 通过。
 - 2026-11-17 工具调用可观测性与单次重试（agent 成熟度主线第一条）：每次工具调用记 `ms` 与 `attempts`，transcript 的工具行显示 `2.4 s · #2`；失败行给「重试这次调用」，用同一 args 原地重跑并按 `callId` 改写模型侧的 `tool` 消息（否则 transcript 显示成功、下一轮仍以为失败）。纯逻辑 `lib/agent/tool-retry.ts`：`retryPlan`（非工具行 / 未失败 / 运行中 / 已拒绝 / 无名都不给重试）、`retriedEntry`（保留 id 与 `at`，`attempts + 1`，丢掉过期回执，非法时长不写成 NaN）、`reconcileToolMessage`（命中则改写、缺失则追加、无 callId 不动且不改入参）、`formatDuration`（`820 ms` / `2.4 s` / `46 s` / `2m 05s`，59.7s 进位成 `1m 00s`）、`toolMeta`。验证：regression 新增 1 组（46 条断言，`PASS tool retries`）、`scripts/e2e-tool-retry.mjs` 在真实 dev 上注入三条失败行 —— 成功重试后 attempts=2、耗时可见、重试按钮消失、模型侧 call-A 只剩一条且内容已更新；再次失败的行保持重试入口、call-B 被追加；被拒绝的写操作没有重试入口；`attempts:2` 与 `callId` 落进 localStorage（截图 `docs/checks/268-tool-retry.png`）；tsc + eslint(0) + i18n(0 missing / 0 hardcoded) + build 通过。
 - 2026-11-17 回答可溯源（对标 ChatGPT 的引用）：`lib/agent/citations.ts` 从工具回执里收集来源 —— `web_search` 命中的页面、`fetch_url` 读过的页、`search_knowledge` / `read_knowledge` 命中的条目（`id#chunk`）；去重、上限 5、只要 http(s)；最终答复的 `final` 条目带 `sources`，聊天与议题面板都渲染成 chip（网页开新标签、知识深链到 `/knowledge?id=`），发到议题的评论也会附一段来源 Markdown。验证：`PASS citations: de-duplication, cap, validation, labels and markdown` + `scripts/e2e-citations.mjs`（注入 fixture 会话，开议题抽屉，断言两枚 chip 的 href/target）。
 - 2026-11-17 筛选表达式（对标 Linear 的 query 语法）：`lib/query.ts` 解析 `status:todo,in-progress` `assignee:me` `label:Bug` `cycle:c43` `project:atlas` `due:overdue` `is:open` `-priority:low` `"完整短语"`；列表的筛选弹层新增输入框，搜索页把同一套语法用在议题结果上并显示已识别筛选与未知 key 提示。回归新增 1 组（分词、别名、否定、名称解析、到期判断、自由词），浏览器验收 `scripts/e2e-query-language.mjs` 两段（搜索页 chips/矛盾过滤/未知 key；团队列表筛选框清空结果）通过。

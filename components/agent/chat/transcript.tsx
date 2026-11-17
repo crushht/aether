@@ -13,6 +13,7 @@ import {
   ListPlus,
   Paperclip,
   Pencil,
+  Scissors,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -26,23 +27,33 @@ import { Markdown } from '@/components/issue/markdown';
 import { LogRow } from '@/components/agent/agent-panel';
 import { toPlainText } from '@/lib/agent/text';
 import type { AgentAttachment, AgentLogEntry, AgentUsage } from '@/lib/agent/types';
+import type { CompactionReport } from '@/lib/agent/compact';
 import type { RetryStatus } from '@/lib/agent/tool-retry';
 
 export function ContextMeter({
   used,
   total,
   usage,
+  compaction,
 }: {
   used: number;
   total: number;
   usage?: AgentUsage;
+  /** the last time the transcript had to be cut, so the meter can explain it */
+  compaction?: CompactionReport;
 }) {
+  const t = useT();
   const pct = total ? Math.min(1, used / total) : 0;
   const tone = pct > 0.85 ? 'var(--red)' : pct > 0.65 ? 'var(--orange)' : 'var(--accent)';
+  const trimmed = compaction?.applied ? compaction : null;
   const title = [
     usage ? `prompt ${usage.promptTokens} · completion ${usage.completionTokens}` : `${used} tokens`,
     usage ? `steps ${usage.steps} · tools ${usage.tools}` : '',
     `window ${total.toLocaleString()} · used ${used.toLocaleString()} (${total ? `${((used / total) * 100).toFixed(2)}%` : '—'})`,
+    trimmed
+      ? `${t('{n} earlier turn(s) were trimmed ({tokens} tokens)', { n: trimmed.droppedTurns, tokens: trimmed.droppedTokens })}`
+      : '',
+    trimmed && trimmed.keptFrom ? `${t('The window opens at')}: ${trimmed.keptFrom}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -52,6 +63,16 @@ export function ContextMeter({
         <span className="block h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.max(3, pct * 100)}%`, background: tone }} />
       </span>
       <span className="tnum text-[11.5px] text-t4">{total ? (pct < 0.005 ? '<1%' : `${Math.round(pct * 100)}%`) : '—'}</span>
+      {trimmed ? (
+        <span
+          data-context-trimmed={trimmed.droppedTurns}
+          className="flex items-center gap-0.5 text-[11px] text-t4"
+          title={title}
+        >
+          <Scissors size={9} strokeWidth={2} />
+          {trimmed.droppedTurns}
+        </span>
+      ) : null}
     </span>
   );
 }

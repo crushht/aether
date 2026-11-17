@@ -1658,6 +1658,59 @@ async function run() {
   assert.equal(retryLib.toolMeta(toolRow({})), '');
   console.log('PASS tool retries: replay rules, row patching, message reconciliation and durations');
 
+  // Context budget: a cut is described instead of performed silently.
+  const compact = await loadTs(path.resolve('lib/agent/compact.ts'));
+  const systemTurn = { role: 'system', content: 'system prompt' };
+  const makeTurn = (index) => [
+    { role: 'user', content: `question ${index} ${'x'.repeat(2000)}` },
+    { role: 'assistant', content: 'answer', toolCalls: [{ id: `c${index}`, name: 'list_issues', args: {} }] },
+    { role: 'tool', toolCallId: `c${index}`, content: '[]' },
+  ];
+  const longThread = [systemTurn, ...makeTurn(0), ...makeTurn(1), ...makeTurn(2), ...makeTurn(3), { role: 'user', content: 'last question' }];
+  const budget = 1200;
+  const cutReport = compact.compactionReport(longThread, budget);
+  assert.equal(cutReport.applied, true);
+  assert.ok(cutReport.droppedCount > 0);
+  assert.ok(cutReport.droppedTurns >= 1);
+  assert.ok(cutReport.droppedTokens > 0);
+  assert.ok(cutReport.afterTokens < cutReport.beforeTokens, 'the sent transcript must be smaller');
+  assert.equal(cutReport.totalMessages, longThread.length);
+  assert.equal(cutReport.keptMessages, compact.compactMessages(longThread, budget).length);
+  assert.ok(cutReport.keptFrom.startsWith('question'), `the report names the surviving window, got: ${cutReport.keptFrom}`);
+  assert.ok(cutReport.dropped.length <= 8, 'previews are capped for storage');
+  assert.equal(cutReport.dropped.at(-1).role, 'tool', 'the newest dropped message is nearest the cut');
+  assert.ok(cutReport.dropped.every((row) => row.tokens > 0 && row.preview.length <= 140 && !row.preview.includes('\n')));
+  const keptTurns = compact.compactMessages(longThread, budget);
+  for (const message of keptTurns) {
+    if (message.role !== 'tool') continue;
+    assert.ok(keptTurns.some((entry) => entry.toolCalls?.some((call) => call.id === message.toolCallId)), 'no orphan tool message survives');
+  }
+  assert.equal(keptTurns[0].content.split('Some earlier turns were removed').length - 1, 1, 'the note is added once');
+
+  const shortThread = [systemTurn, { role: 'user', content: 'hi' }, { role: 'assistant', content: 'hey' }];
+  const noCut = compact.compactionReport(shortThread, 60_000);
+  assert.equal(noCut.applied, false);
+  assert.equal(noCut.droppedCount, 0);
+  assert.equal(noCut.droppedTokens, 0);
+  assert.deepEqual(noCut.dropped, []);
+  assert.equal(noCut.beforeTokens, noCut.afterTokens);
+  assert.equal(noCut.keptFrom, 'hi', 'without a cut the window starts at the first question');
+  assert.equal(compact.compactionSummary(noCut), '');
+
+  const summaryLine = compact.compactionSummary(cutReport);
+  assert.ok(
+    /^\d+ turn\(s\) · \d+ message\(s\) · \d+ token\(s\)$/.test(summaryLine),
+    `unexpected summary: ${summaryLine}`,
+  );
+  const noteRow = { kind: 'note', compaction: cutReport };
+  const newer = { ...cutReport, applied: false };
+  assert.equal(compact.lastCompaction([{ kind: 'user' }, noteRow, { kind: 'final' }]), cutReport);
+  assert.equal(compact.lastCompaction([noteRow, { kind: 'note', compaction: newer }]), newer, 'the newest cut wins');
+  assert.equal(compact.lastCompaction([{ kind: 'note' }, { kind: 'user' }]), undefined, 'a note without a report is not a cut');
+  assert.equal(compact.lastCompaction([]), undefined);
+  assert.equal(compact.lastCompaction(undefined), undefined);
+  console.log('PASS context budget: compaction report, dropped previews, summary and last-cut lookup');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

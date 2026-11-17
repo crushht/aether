@@ -9,7 +9,7 @@ import { useToolApprovals } from '@/lib/store/tool-approvals';
 import { needsToolApproval } from './tool-approval';
 import { projectContextText } from './project-context';
 import { chat, ProviderError } from './provider';
-import { compactMessages } from './compact';
+import { compactMessages, compactionReport, compactionSummary } from './compact';
 import { getLocale, translate } from '@/lib/i18n';
 import { isReadOnlyToolCall, previewTool, runTool, toolSchemas, workspaceContext, workspaceSummary } from './tools';
 import type { ToolOutcome } from './tools';
@@ -759,6 +759,8 @@ export const useAgent = create<AgentState>((set, get) => {
 
       let toolCount = 0;
       const toolLines: string[] = [];
+      // a cut is explained once per run, not once per step
+      let trimmed = false;
       // Everything the tools actually opened this run; the final bubble cites
       // it, and an issue comment gets the same list as Markdown.
       let sources: ChatSource[] = [];
@@ -767,9 +769,24 @@ export const useAgent = create<AgentState>((set, get) => {
         for (let step = 0; step < Math.max(1, target.maxSteps); step += 1) {
           let streamId: string | null = null;
           const streamedIds: string[] = [];
+          const budget = Math.round(target.contextWindow * 0.62);
+          // Say what the cut costs before the model answers without it.
+          const report = compactionReport(messages, budget);
+          if (report.applied && !trimmed) {
+            trimmed = true;
+            patch(targetId, (session) => ({
+              ...session,
+              log: [
+                ...session.log,
+                entry('note', translate(getLocale(), 'Context trimmed: {summary}', { summary: compactionSummary(report) }), {
+                  compaction: report,
+                }),
+              ],
+            }));
+          }
           const result = await chat({
             target,
-            messages: compactMessages(messages, Math.round(target.contextWindow * 0.62)),
+            messages: compactMessages(messages, budget),
             tools: toolSchemas,
             signal: controller.signal,
             onDelta: (text) => {
