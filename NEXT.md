@@ -7,6 +7,7 @@
 > 4. 门禁：`npx tsc --noEmit` + `node scripts/regression.mjs` 必须过；`npm run build` 在提交前跑一次。
 > 5. 不改坏既有能力；发现回归先修回归。纯逻辑进可测模块并补 regression 用例，界面改动用真实 dev 验收。
 > 6. 外部资产阻塞的条目不进「待办」，写在「阻塞」里；能拆成可验证子任务的就拆。
+> 7. **不许停**：队列空就 seed，`docs/11` 空就从 `docs/13-持续候选池.md` 搬，三处都空才等。守护进程 `node scripts/relentless.mjs` 强制执行这条；人喊停除外。
 
 ## 待办
 

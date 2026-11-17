@@ -12,6 +12,22 @@ let text = readFileSync(file, 'utf8');
 const args = process.argv.slice(2);
 const doneIndex = args.indexOf('--done');
 const addIndex = args.indexOf('--add');
+const blockIndex = args.indexOf('--block');
+
+/** Move an item out of the rotating queue without claiming it is done. */
+function blockItem(target) {
+  const line = `- [ ] ${target}`;
+  if (!text.includes(line)) {
+    console.error(`not found: ${target}`);
+    process.exit(1);
+  }
+  text = text.replace(`${line}\n`, '');
+  const header = '## 阻塞（需要外部资产，不进入轮转队列）';
+  const note = `${line}（自动标记：一轮未产出改动）`;
+  text = text.includes(header) ? text.replace(header, `${header}\n\n${note}`) : `${text}\n${header}\n\n${note}\n`;
+  writeFileSync(file, text, 'utf8');
+  console.log(`blocked: ${target}`);
+}
 
 /** Unchecked items inside `## 待办` only. */
 function pendingItems(source) {
@@ -43,6 +59,16 @@ if (doneIndex >= 0) {
   }
   writeFileSync(file, text, 'utf8');
   console.log(`done: ${target}`);
+  process.exit(0);
+}
+
+if (blockIndex >= 0) {
+  const target = (args[blockIndex + 1] ?? '').trim();
+  if (!target) {
+    console.error('usage: node scripts/next.mjs --block "<item text>"');
+    process.exit(1);
+  }
+  blockItem(target);
   process.exit(0);
 }
 

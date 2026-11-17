@@ -23,6 +23,8 @@
     "autopilot:check": "node scripts/autopilot.mjs --check",
     "autopilot:until-dry": "node scripts/autopilot.mjs --until-dry",
     "autopilot:seed": "node scripts/autopilot.mjs --seed",
+    "relentless": "node scripts/relentless.mjs",
+    "relentless:status": "node scripts/relentless.mjs --status",
     "desktop": "node scripts/run-electron.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "icon": "node scripts/make-icon.mjs",
