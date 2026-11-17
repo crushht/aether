@@ -1579,6 +1579,85 @@ async function run() {
   assert.equal(flatGeometry.polyline, '0,152');
   console.log('PASS cycle burndown: daily remaining points, unestimated work, canceled scope and SVG geometry');
 
+  // Tool retries: what may be replayed, what the row looks like afterwards, and
+  // whether the model's copy of the result follows the transcript.
+  const retryLib = await loadTs(path.resolve('lib/agent/tool-retry.ts'));
+  const failedRow = {
+    id: 'log1', kind: 'tool', text: 'Issue NOPE-1 not found.', ok: false,
+    name: 'get_issue', args: { key: 'NOPE-1' }, callId: 'call-1', ms: 12, at: 1,
+  };
+  const plan = retryLib.retryPlan(failedRow, 'done');
+  assert.equal(plan.retryable, true);
+  assert.equal(plan.name, 'get_issue');
+  assert.deepEqual(plan.args, { key: 'NOPE-1' });
+  assert.equal(plan.attempts, 1);
+  assert.equal(retryLib.retryPlan(failedRow, 'running').blocked, 'busy');
+  assert.equal(retryLib.retryPlan(failedRow, 'waiting').blocked, 'busy');
+  assert.equal(retryLib.retryPlan({ ...failedRow, ok: true }, 'done').blocked, 'not-failed');
+  assert.equal(retryLib.retryPlan({ ...failedRow, kind: 'final' }, 'done').blocked, 'not-a-tool');
+  assert.equal(retryLib.retryPlan(undefined, 'done').blocked, 'not-a-tool');
+  assert.equal(retryLib.retryPlan({ ...failedRow, name: '   ' }, 'done').blocked, 'unnamed');
+  assert.equal(
+    retryLib.retryPlan({ ...failedRow, text: 'Rejected by you', ok: false }, 'done').blocked,
+    'rejected',
+    'a rejected write stays rejected: the person already decided',
+  );
+  assert.deepEqual(retryLib.retryPlan({ ...failedRow, args: undefined }, 'done').args, {}, 'no args is an empty set, not a refusal');
+  assert.equal(retryLib.retryPlan({ ...failedRow, attempts: 4 }, 'done').attempts, 4);
+  assert.equal(retryLib.isRejectedRow(failedRow), false);
+  assert.equal(retryLib.isRejectedRow({ ...failedRow, text: 'Rejected by you' }), true);
+
+  const retried = retryLib.retriedEntry(failedRow, { ok: true, summary: 'ENG-1 read' }, 2400);
+  assert.equal(retried.id, 'log1');
+  assert.equal(retried.ok, true);
+  assert.equal(retried.text, 'ENG-1 read');
+  assert.equal(retried.ms, 2400);
+  assert.equal(retried.attempts, 2);
+  assert.equal(retried.at, 1, 'the row keeps its place in the transcript');
+  assert.equal(retried.callId, 'call-1');
+  assert.ok(retried.retriedAt > 0);
+  assert.equal(retried.card, undefined, 'a stale receipt is dropped when the new call has none');
+  const thrice = retryLib.retriedEntry(retried, { ok: false, summary: 'still failing' }, -5);
+  assert.equal(thrice.attempts, 3);
+  assert.equal(thrice.ms, undefined, 'a negative duration is not a measurement');
+  const withCard = retryLib.retriedEntry(failedRow, { ok: true, summary: 'ok', card: { kind: 'search', query: 'q', hits: [], source: 'settings' } }, 10);
+  assert.ok(withCard.card, 'a fresh receipt replaces the old one');
+  assert.equal(retryLib.retriedEntry({ ...failedRow, attempts: 0 }, { ok: true, summary: 'x' }, 1).attempts, 2, 'attempts never fall below 1');
+
+  const retryMessages = [
+    { role: 'assistant', content: '', toolCalls: [{ id: 'call-1', name: 'get_issue', args: { key: 'NOPE-1' } }] },
+    { role: 'tool', toolCallId: 'call-1', content: 'Issue NOPE-1 not found.' },
+    { role: 'assistant', content: 'Sorry.' },
+  ];
+  const reconciled = retryLib.reconcileToolMessage(retryMessages, 'call-1', 'ENG-1 · Read');
+  assert.equal(reconciled.patched, true);
+  assert.equal(reconciled.messages.length, 3);
+  assert.equal(reconciled.messages[1].content, 'ENG-1 · Read');
+  assert.equal(retryMessages[1].content, 'Issue NOPE-1 not found.', 'the input array is not mutated');
+  const appended = retryLib.reconcileToolMessage(retryMessages, 'call-9', 'late result');
+  assert.equal(appended.patched, false);
+  assert.equal(appended.messages.length, 4);
+  assert.equal(appended.messages.at(-1).toolCallId, 'call-9', 'a call missing from history is appended, not dropped');
+  const noId = retryLib.reconcileToolMessage(retryMessages, undefined, 'x');
+  assert.equal(noId.patched, false);
+  assert.equal(noId.messages, retryMessages);
+
+  assert.equal(retryLib.formatDuration(820), '820 ms');
+  assert.equal(retryLib.formatDuration(0), '0 ms');
+  assert.equal(retryLib.formatDuration(2400), '2.4 s');
+  assert.equal(retryLib.formatDuration(45_900), '46 s');
+  assert.equal(retryLib.formatDuration(125_000), '2m 05s');
+  assert.equal(retryLib.formatDuration(59_700), '1m 00s', 'a rounded 60 s carries into the minute');
+  assert.equal(retryLib.formatDuration(-1), '');
+  assert.equal(retryLib.formatDuration(Number.NaN), '');
+  assert.equal(retryLib.formatDuration(undefined), '');
+  const toolRow = (extra) => ({ id: 'a', kind: 'tool', text: '', at: 0, ...extra });
+  assert.equal(retryLib.toolMeta(toolRow({ ms: 2400 })), '2.4 s');
+  assert.equal(retryLib.toolMeta(toolRow({ ms: 2400, attempts: 2 })), '2.4 s · #2');
+  assert.equal(retryLib.toolMeta(toolRow({ attempts: 3 })), '#3');
+  assert.equal(retryLib.toolMeta(toolRow({})), '');
+  console.log('PASS tool retries: replay rules, row patching, message reconciliation and durations');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

@@ -87,6 +87,7 @@ export function AgentChat() {
   const cancel = useAgent((s) => s.cancel);
   const reset = useAgent((s) => s.reset);
   const retry = useAgent((s) => s.retry);
+  const retryTool = useAgent((s) => s.retryTool);
   const approve = useAgent((s) => s.approve);
   const reject = useAgent((s) => s.reject);
   const toIssue = useAgent((s) => s.toIssue);
@@ -835,6 +836,10 @@ export function AgentChat() {
                           items={node.items}
                           index={node.index}
                           defaultOpen={node.index === lastStep}
+                          retryStatus={session?.status ?? 'idle'}
+                          onRetryTool={(item) => {
+                            if (key) void retryTool(key, item.id);
+                          }}
                         />
                       ) : node.item.kind === 'user' ? (
                         <UserBubble

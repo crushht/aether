@@ -12,6 +12,8 @@ import { chat, ProviderError } from './provider';
 import { compactMessages } from './compact';
 import { getLocale, translate } from '@/lib/i18n';
 import { isReadOnlyToolCall, previewTool, runTool, toolSchemas, workspaceContext, workspaceSummary } from './tools';
+import type { ToolOutcome } from './tools';
+import { reconcileToolMessage, retriedEntry, retryPlan } from './tool-retry';
 import { addSources, sourcesMarkdown } from './citations';
 import { chatKey, useChats } from './chats';
 import { isModelReady, resolveModelTarget, useWorkspace } from './workspace';
@@ -96,6 +98,8 @@ interface AgentState {
   run: (targetId: string, prompt: string, attachments?: AgentAttachment[]) => Promise<void>;
   /** re-run the last prompt of this target without retyping it */
   retry: (targetId: string) => void;
+  /** replay one failed tool call in place, reusing its args and rewriting the model's copy */
+  retryTool: (targetId: string, logId: string) => Promise<void>;
   /** drop a chosen user turn and everything after it, so it can be edited and resent */
   rewind: (targetId: string, logId?: string) => void;
   /** branch from a particular user turn without changing the original */
@@ -508,6 +512,57 @@ export const useAgent = create<AgentState>((set, get) => {
       }
     },
 
+    retryTool: async (targetId, logId) => {
+      const session = get().sessions[targetId];
+      const row = session?.log.find((item) => item.id === logId);
+      const plan = retryPlan(row, session?.status ?? 'idle');
+      if (!session || !row || !plan.retryable || !plan.name) return;
+      const toolName = plan.name;
+
+      const statusId = uid('log');
+      patch(targetId, (current) => ({
+        ...current,
+        log: [
+          ...current.log.filter((item) => item.kind !== 'status'),
+          { id: statusId, kind: 'status' as const, text: translate(getLocale(), 'Retrying {tool}…', { tool: toolName }), at: Date.now() },
+        ],
+      }));
+
+      const chatId = targetId.startsWith('chat:') ? targetId.slice('chat:'.length) : '';
+      const projectId = chatId ? useChats.getState().chats.find((item) => item.id === chatId)?.projectId ?? null : null;
+      const startedAt = Date.now();
+      let outcome: ToolOutcome;
+      try {
+        outcome = await runTool(toolName, {
+          ...plan.args,
+          targetId,
+          ...(projectId ? { projectId } : {}),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        outcome = { ok: false, content: message, summary: message };
+      }
+      const ms = Date.now() - startedAt;
+      const next = retriedEntry(row, { ok: outcome.ok, summary: outcome.summary, card: outcome.card }, ms);
+      const reconciled = reconcileToolMessage(session.messages, row.callId, outcome.content);
+
+      patch(targetId, (current) => ({
+        ...current,
+        messages: reconciled.messages,
+        log: current.log
+          .filter((item) => item.kind !== 'status')
+          .map((item) => (item.id === next.id ? next : item)),
+      }));
+      if (!outcome.ok) {
+        useUI.getState().pushToast({
+          title: `${toolName} failed again`,
+          description: outcome.summary.slice(0, 160),
+          tone: 'danger',
+        });
+      }
+      syncChatSession(get().sessions[targetId]);
+    },
+
     regenerate: (targetId) => get().retry(targetId),
 
     setFeedback: (targetId, logId, value) => {
@@ -833,7 +888,9 @@ export const useAgent = create<AgentState>((set, get) => {
               }
             }
 
+            const startedToolAt = Date.now();
             const outcome = await runTool(call.name, { ...call.args, targetId, ...(isChat && chatProjectId ? { projectId: chatProjectId } : {}) });
+            const toolMs = Date.now() - startedToolAt;
             toolCount += 1;
             usage.tools = toolCount;
             sources = addSources(sources, outcome.sources);
@@ -848,6 +905,9 @@ export const useAgent = create<AgentState>((set, get) => {
                   name: call.name,
                   ok: outcome.ok,
                   args: call.args,
+                  callId: call.id,
+                  ms: toolMs,
+                  attempts: 1,
                   ...(outcome.card ? { card: outcome.card } : {}),
                 }),
               ],

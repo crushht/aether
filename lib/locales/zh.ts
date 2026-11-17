@@ -699,6 +699,8 @@ export const zh: Record<string, string> = {
   'Drop the password cookie on this device. You will need the workspace password again.':
     '清掉这台设备上的密码 Cookie，下次打开需要重新输入工作区密码。',
   'Retry': '重试',
+  'Retry this call': '重试这次调用',
+  'Retrying {tool}…': '正在重试 {tool}…',
   'Show {n} more tool calls': '展开其余 {n} 条工具调用',
   'Set up a model to enable the agent': '配置模型后启用智能体',
   'Base URL': '接口地址',

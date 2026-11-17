@@ -26,6 +26,7 @@ import { Markdown } from '@/components/issue/markdown';
 import { LogRow } from '@/components/agent/agent-panel';
 import { toPlainText } from '@/lib/agent/text';
 import type { AgentAttachment, AgentLogEntry, AgentUsage } from '@/lib/agent/types';
+import type { RetryStatus } from '@/lib/agent/tool-retry';
 
 export function ContextMeter({
   used,
@@ -91,10 +92,15 @@ export function StepGroup({
   items,
   index,
   defaultOpen,
+  onRetryTool,
+  retryStatus,
 }: {
   items: AgentLogEntry[];
   index: number;
   defaultOpen: boolean;
+  /** replay one failed call in place; absent = no retry affordance */
+  onRetryTool?: (item: AgentLogEntry) => void;
+  retryStatus?: RetryStatus;
 }) {
   const t = useT();
   const [open, setOpen] = React.useState(defaultOpen);
@@ -123,7 +129,7 @@ export function StepGroup({
       {open ? (
         <div className="px-2.5 pb-1.5">
           {items.map((item) => (
-            <LogRow key={item.id} item={item} />
+            <LogRow key={item.id} item={item} onRetry={onRetryTool} retryStatus={retryStatus} />
           ))}
         </div>
       ) : null}

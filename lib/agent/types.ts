@@ -237,6 +237,14 @@ export interface AgentLogEntry {
   name?: string;
   ok?: boolean;
   args?: Record<string, unknown>;
+  /** the provider-side call id, so a retry can rewrite the model's copy too */
+  callId?: string;
+  /** wall-clock duration of the call that produced this row */
+  ms?: number;
+  /** 1 for the first call, +1 for every in-place retry */
+  attempts?: number;
+  /** when the row was last replayed (kept apart from `at`, which is its place) */
+  retriedAt?: number;
   /** structured receipt (search hits, artifact report) — expandable in the chat */
   card?: ToolCard;
   /** where a final answer came from; at most a handful, deduplicated */

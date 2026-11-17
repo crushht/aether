@@ -11,18 +11,23 @@
 
 ## 待办
 
+> v0.5 主线：agent 的可观测性与失败处理（见 `docs/14-Agent成熟度路线图.md`），其次是 Linear 对标补齐。
+> 一轮一条，纯逻辑 + 回归 + e2e，门禁全绿才提交。
 
-- [x] P1 邮件验证码浏览器验收：`scripts/e2e-email-code.mjs` 覆盖发送倒计时、错误码递减、注册校验、找回密码四条路径（`AETHER_EMAIL_ECHO=1` 下取码）
-- [x] P2 审计流覆盖认证事件：登录成功/失败、验证码发送、密码重置写入工作区审计（作者、IP、UA）
-- [x] P2 Cycle 燃尽图：按 cycle 起止日期计算每日剩余点，SVG 折线，纯函数 + 回归
-- [x] P1 邮件服务设置页：SMTP 主机/账号/授权码可配置并加密存储，保存后即时生效（替代只读 .env.local）
-- [x] P1 邮件验证码 e2e：登录页「邮箱验证码」全流程（发送倒计时、错误码、注册校验、找回密码）浏览器验收
-- [x] P1 Agent 工具结果渲染：web_search 命中卡片与 inspect_artifact 报告面板（对话流内可展开）
-- [x] P1 Autopilot CI 接线：autopilot --check 作为 PR 门禁，失败自动 stash 并上传日志
-- [x] P2 搜索来源可配置：AETHER_SEARCH_URL（SearXNG）与引擎优先级在设置页可见
-- [x] P2 附件逆向入口：议题附件菜单「分析」，复用 /api/agent/inspect
-- [x] P2 安全审计流：登录、验证码、密码重置事件写入工作区审计记录
-- [x] P2 `scripts/e2e-attachments.mjs` 复现：评论附件刷新后丢失（干净树上同样失败，先判定是测试的选择器/时序还是 `addComment` 的保存竞态，再决定修测试还是修产品）
+- [x] P1 工具调用可观测性与单次重试：每次工具调用的耗时与尝试次数进 transcript（`2.4s · 第 2 次`），失败行给「重试这次调用」，复用同一 args 重跑并同步会话消息 —— `lib/agent/tool-retry.ts` + 回归 + `scripts/e2e-tool-retry.mjs`
+- [ ] P1 上下文预算解释器：把 `compactMessages` 的裁剪结果变成可读报告（裁掉几轮、多少 token、从哪条开始保留），运行中写一条 note 行，ContextMeter 可展开看明细 —— `compactionReport()` + 回归
+- [ ] P1 依赖视图：把 `blocks / blocked_by` 画成 SVG 分层有向图（拓扑层级、箭头、成环降级为列表），点节点打开抽屉 —— `lib/dependency-graph.ts` + 回归 + 抽屉页签
+- [ ] P2 模型参数预设：温度/步数做成「精确 / 平衡 / 发散」三档，落在 provider 上，设置页一键切换 —— `lib/agent/model-presets.ts` + 回归
+- [ ] P2 工作流退避重试：失败后 1 / 5 / 15 分钟自动重试，每次尝试写进运行台账 —— `lib/agent/workflow-retry.ts` + 回归
+- [ ] P2 收件箱稍后处理：通知菜单「1 小时 / 明天 / 下周」，到期前不出现在未读、不计入角标 —— `lib/notification-snooze.ts` + 回归 + e2e
+- [ ] P2 看板 WIP 上限：列头「3 / 5」，超限变红，上限存视图偏好 —— `lib/wip-limits.ts` + 回归
+- [ ] P2 周期吞吐表：按周统计完成点数与平均周期，与燃尽图同页 —— `lib/cycle-throughput.ts` + 回归
+- [ ] P2 项目级权限：成员在项目上的可见/可编辑两档，服务端校验，回归覆盖越权路径
+- [ ] P2 通知偏好矩阵：项目 × 类型的二维开关 —— 纯逻辑 + 设置页
+- [ ] P3 审计流导出 CSV：列固定、UTF-8 BOM
+- [ ] P3 e2e 冒烟进 CI：挑 6 个最稳的 `e2e-*.mjs` 在 CI 里跑
+- [ ] P3 依赖体检：`npm outdated` 写 `.improve/deps.md`
+- [ ] P3 快捷键帮助补全：`?` 面板与 `shortcuts.tsx` 同源
 ## 阻塞（需要外部资产，不进入轮转队列）
 
 - [ ] P0 恢复 exe 图标与版本信息（需开发者模式或 CI 打包）
@@ -31,6 +36,7 @@
 
 ## 已完成
 
+- 2026-11-17 工具调用可观测性与单次重试（agent 成熟度主线第一条）：每次工具调用记 `ms` 与 `attempts`，transcript 的工具行显示 `2.4 s · #2`；失败行给「重试这次调用」，用同一 args 原地重跑并按 `callId` 改写模型侧的 `tool` 消息（否则 transcript 显示成功、下一轮仍以为失败）。纯逻辑 `lib/agent/tool-retry.ts`：`retryPlan`（非工具行 / 未失败 / 运行中 / 已拒绝 / 无名都不给重试）、`retriedEntry`（保留 id 与 `at`，`attempts + 1`，丢掉过期回执，非法时长不写成 NaN）、`reconcileToolMessage`（命中则改写、缺失则追加、无 callId 不动且不改入参）、`formatDuration`（`820 ms` / `2.4 s` / `46 s` / `2m 05s`，59.7s 进位成 `1m 00s`）、`toolMeta`。验证：regression 新增 1 组（46 条断言，`PASS tool retries`）、`scripts/e2e-tool-retry.mjs` 在真实 dev 上注入三条失败行 —— 成功重试后 attempts=2、耗时可见、重试按钮消失、模型侧 call-A 只剩一条且内容已更新；再次失败的行保持重试入口、call-B 被追加；被拒绝的写操作没有重试入口；`attempts:2` 与 `callId` 落进 localStorage（截图 `docs/checks/268-tool-retry.png`）；tsc + eslint(0) + i18n(0 missing / 0 hardcoded) + build 通过。
 - 2026-11-17 回答可溯源（对标 ChatGPT 的引用）：`lib/agent/citations.ts` 从工具回执里收集来源 —— `web_search` 命中的页面、`fetch_url` 读过的页、`search_knowledge` / `read_knowledge` 命中的条目（`id#chunk`）；去重、上限 5、只要 http(s)；最终答复的 `final` 条目带 `sources`，聊天与议题面板都渲染成 chip（网页开新标签、知识深链到 `/knowledge?id=`），发到议题的评论也会附一段来源 Markdown。验证：`PASS citations: de-duplication, cap, validation, labels and markdown` + `scripts/e2e-citations.mjs`（注入 fixture 会话，开议题抽屉，断言两枚 chip 的 href/target）。
 - 2026-11-17 筛选表达式（对标 Linear 的 query 语法）：`lib/query.ts` 解析 `status:todo,in-progress` `assignee:me` `label:Bug` `cycle:c43` `project:atlas` `due:overdue` `is:open` `-priority:low` `"完整短语"`；列表的筛选弹层新增输入框，搜索页把同一套语法用在议题结果上并显示已识别筛选与未知 key 提示。回归新增 1 组（分词、别名、否定、名称解析、到期判断、自由词），浏览器验收 `scripts/e2e-query-language.mjs` 两段（搜索页 chips/矛盾过滤/未知 key；团队列表筛选框清空结果）通过。
 - 2026-11-16 Cycle 燃尽图：`lib/cycles.ts` 新增三个纯函数 —— `issuePoints`（有估点用估点，没有按 1 点，0/负数/字符串/NaN 都回退 1）、`burndown`（以 cycle `startsAt` 为锚每 24h 一天，逐日累计 scope / done / canceled，`remaining = scope − done − canceled` 且不小于 0；`now` 钳进窗口，所以未来的周期只画开局一个点、结束的周期画满整窗；非法日期返回空数组）、`burndownGeometry`（`max`/`cutoff`/`grid`/`polyline`/`path`/`area`/`idealPath`，坐标固定 1 位小数、空点集不产生 NaN）。理想线从「当前 scope」拉到收盘归零，中途加范围也不会指着过期总量。周期页新增「燃尽图」卡片（剩余折线 + 理想虚线 + 今日截止线 + 起止/中点日期 + 「N 个未估点按 1 点计」提示），原「进度曲线」（burn-up）保留不动；i18n 新增 4 键。验证：regression 新增 1 组（日桶/scope 中途增长/completion 只在其发生后计入/canceled 退出 scope/窗口前后钳制/非法日期/剩余不为负/几何坐标与网格/空点集与空周期，共 46 条断言，`PASS cycle burndown`）；`scripts/e2e-cycle-burndown.mjs` 在真实 dev（AUTH_DISABLED=1，端口 4321）注入一个 6 天前开始、14 天的周期（10 点 scope、3 点 done、4 点取消、1 个未估点）：断言 7 个日点、`data-burndown-remaining=3`、折线是 `<polyline>` 且末点比首点低、理想线为虚线 `M…L…`、填充闭合、无 NaN、未估点提示可见、空周期为平线、原 burn-up 仍在 → `PASS browser: cycle burndown renders daily remaining points as an SVG polyline and keeps the burn-up chart`；截图 `docs/checks/267-cycle-burndown.png`；`docs/11` 的「周期报表」一行同步改为「燃尽图已具备，缺吞吐趋势图」。tsc + regression + lint(0 problems) + i18n(0 missing / 0 hardcoded) + build 通过。

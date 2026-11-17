@@ -2,12 +2,13 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, ChevronDown, Copy, HelpCircle, Loader2, Sparkles, Square, Wrench } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, HelpCircle, Loader2, RotateCw, Sparkles, Square, Wrench } from 'lucide-react';
 import { useAgent } from '@/lib/agent/store';
 import { isModelReady, useModelTarget } from '@/lib/agent/workspace';
 import { useView } from '@/lib/store/view';
 import type { AgentLogEntry, AgentPendingRow } from '@/lib/agent/types';
 import { isToolCard } from '@/lib/agent/tool-cards';
+import { toolMeta, retryPlan, type RetryStatus } from '@/lib/agent/tool-retry';
 import { sourceHref, sourceKey, sourceLabel } from '@/lib/agent/citations';
 import { ToolCardPanel } from '@/components/agent/chat/tool-card';
 import { PRIORITIES, STATUSES, type Issue } from '@/lib/types';
@@ -61,7 +62,16 @@ function localizeToolSummary(text: string, t: (key: string) => string) {
   );
 }
 
-export function LogRow({ item }: { item: AgentLogEntry }) {
+export function LogRow({
+  item,
+  onRetry,
+  retryStatus,
+}: {
+  item: AgentLogEntry;
+  onRetry?: (item: AgentLogEntry) => void;
+  /** the owning session's status; the replay rules decide what is offered */
+  retryStatus?: RetryStatus;
+}) {
   const t = useT();
   const [copied, setCopied] = React.useState(false);
   const [cardOpen, setCardOpen] = React.useState(false);
@@ -70,6 +80,35 @@ export function LogRow({ item }: { item: AgentLogEntry }) {
   if (item.kind === 'tool') {
     const key = typeof item.args?.key === 'string' ? item.args.key : null;
     const card = isToolCard(item.card) ? item.card : null;
+    const meta = toolMeta(item);
+    const attempts = item.attempts ?? 1;
+    // A failed call is a state, not a verdict: the row offers the replay — but
+    // only when replaying it is honest (a rejected write is a decision).
+    const retry =
+      onRetry && retryPlan(item, retryStatus ?? 'idle').retryable ? (
+        <button
+          type="button"
+          data-tool-retry={item.name}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRetry(item);
+          }}
+          title={t('Retry this call')}
+          className="mt-[2px] flex h-[18px] shrink-0 items-center gap-0.5 rounded-r4 px-1 text-[11px] text-t4 transition-colors hover:bg-[var(--bg-hover)] hover:text-t1"
+        >
+          <RotateCw size={9} strokeWidth={2.3} />
+          {t('Retry')}
+        </button>
+      ) : null;
+    const metaTag = meta ? (
+      <span className="mt-[3px] shrink-0 tnum text-[11px] text-t4" data-tool-meta>
+        {meta}
+      </span>
+    ) : null;
+    const attrs = {
+      'data-agent-tool-ms': typeof item.ms === 'number' ? String(item.ms) : '',
+      'data-agent-tool-attempts': String(attempts),
+    };
 
     // a search hit list or an artifact report: same row, expandable body
     if (card) {
@@ -84,27 +123,31 @@ export function LogRow({ item }: { item: AgentLogEntry }) {
               .join(' · ')
           : `${card.name} · ${card.format} · ${t('entropy {value}', { value: card.entropy.toFixed(2) })}`;
       return (
-        <div data-agent-tool={item.name} data-agent-tool-card={card.kind}>
-          <button
-            type="button"
-            aria-expanded={cardOpen}
-            onClick={() => setCardOpen((value) => !value)}
-            className="flex w-full items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
-          >
-            <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />
-            <span className="shrink-0 font-mono text-[12.5px] text-t3">{item.name}</span>
-            <span className="min-w-0 flex-1 truncate text-t4">{label}</span>
-            {item.ok ? (
-              <Check size={11} strokeWidth={2.4} className="mt-[3px] shrink-0 text-[#7ac977]" />
-            ) : (
-              <AlertTriangle size={11} strokeWidth={2.2} className="mt-[3px] shrink-0 text-[#f08080]" />
-            )}
-            <ChevronDown
-              size={11}
-              strokeWidth={2}
-              className={cn('mt-[3px] shrink-0 text-t4 transition-transform duration-150', cardOpen ? 'rotate-180' : '')}
-            />
-          </button>
+        <div data-agent-tool={item.name} data-agent-tool-card={card.kind} {...attrs}>
+          <div className="flex items-start gap-1.5">
+            <button
+              type="button"
+              aria-expanded={cardOpen}
+              onClick={() => setCardOpen((value) => !value)}
+              className="flex min-w-0 flex-1 items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
+            >
+              <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />
+              <span className="shrink-0 font-mono text-[12.5px] text-t3">{item.name}</span>
+              <span className="min-w-0 flex-1 truncate text-t4">{label}</span>
+              {metaTag}
+              {item.ok ? (
+                <Check size={11} strokeWidth={2.4} className="mt-[3px] shrink-0 text-[#7ac977]" />
+              ) : (
+                <AlertTriangle size={11} strokeWidth={2.2} className="mt-[3px] shrink-0 text-[#f08080]" />
+              )}
+              <ChevronDown
+                size={11}
+                strokeWidth={2}
+                className={cn('mt-[3px] shrink-0 text-t4 transition-transform duration-150', cardOpen ? 'rotate-180' : '')}
+              />
+            </button>
+            {retry}
+          </div>
           {cardOpen ? (
             <div className="mb-1 ml-[18px] rounded-r6 bg-[var(--bg-elevated)] px-1.5 py-1 shadow-[inset_0_0_0_1px_var(--line-subtle)]">
               <ToolCardPanel card={card} />
@@ -119,6 +162,7 @@ export function LogRow({ item }: { item: AgentLogEntry }) {
         <Wrench size={11} strokeWidth={1.9} className="mt-[3px] shrink-0 text-t4" />
         <span className="shrink-0 font-mono text-[12.5px] text-t3">{item.name}</span>
         <span className="min-w-0 flex-1 truncate text-t4">{summary}</span>
+        {metaTag}
         {item.ok ? (
           <Check size={11} strokeWidth={2.4} className="mt-[3px] shrink-0 text-[#7ac977]" />
         ) : (
@@ -126,24 +170,20 @@ export function LogRow({ item }: { item: AgentLogEntry }) {
         )}
       </>
     );
-
-    // a tool that names an issue is a link to it
-    if (key) {
-      return (
-        <button
-          type="button"
-          data-agent-tool={item.name}
-          onClick={() => useView.getState().openIssue(key)}
-          className="flex w-full items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]"
-        >
-          {content}
-        </button>
-      );
-    }
+    const rowClass =
+      'flex min-w-0 flex-1 items-start gap-1.5 rounded-r4 py-[3px] text-left text-[13px] leading-[1.5] transition-colors hover:bg-[var(--bg-hover)]';
 
     return (
-      <div data-agent-tool={item.name} className="flex items-start gap-1.5 py-[3px] text-[13px] leading-[1.5]">
-        {content}
+      <div data-agent-tool={item.name} {...attrs} className="flex items-start gap-1.5">
+        {/* a tool that names an issue is a link to it */}
+        {key ? (
+          <button type="button" onClick={() => useView.getState().openIssue(key)} className={rowClass}>
+            {content}
+          </button>
+        ) : (
+          <div className={rowClass}>{content}</div>
+        )}
+        {retry}
       </div>
     );
   }
@@ -231,6 +271,7 @@ export function AgentPanel({ issue }: { issue: Issue }) {
   const hydrate = useAgent((s) => s.hydrate);
   const run = useAgent((s) => s.run);
   const retry = useAgent((s) => s.retry);
+  const retryTool = useAgent((s) => s.retryTool);
   const cancel = useAgent((s) => s.cancel);
   const reset = useAgent((s) => s.reset);
   const approve = useAgent((s) => s.approve);
@@ -340,7 +381,12 @@ export function AgentPanel({ issue }: { issue: Issue }) {
                 {t('Show {n} more tool calls', { n: item.count })}
               </button>
             ) : (
-              <LogRow key={item.id} item={item} />
+              <LogRow
+              key={item.id}
+              item={item}
+              retryStatus={session?.status ?? 'idle'}
+              onRetry={(row) => void retryTool(issue.id, row.id)}
+            />
             ),
           )}
         </div>
