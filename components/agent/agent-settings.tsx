@@ -20,6 +20,7 @@ import {
 import { useModelTarget, isModelReady, useWorkspace } from '@/lib/agent/workspace';
 import { useToolApprovals } from '@/lib/store/tool-approvals';
 import { MODEL_ROUTES, PROVIDER_PRESETS, type ModelRoutes, type ProviderConfig, type ProviderDraft } from '@/lib/agent/types';
+import { PRECISION_PRESETS, applyPreset, presetFor } from '@/lib/agent/model-presets';
 import { UsageSummaryCard } from '@/components/agent/usage-summary';
 import { useT } from '@/lib/use-t';
 import { cn, relativeTime, isImeComposing } from '@/lib/utils';
@@ -286,10 +287,41 @@ function ProviderForm({
             ) : null}
           </div>
         </Field>
+        <Field label={t('Preset')} hint={t('Sets temperature and steps together.')}>
+          <div className="flex flex-wrap items-center gap-1.5" data-precision-presets>
+            {PRECISION_PRESETS.map((profile) => {
+              const active = presetFor(draft.temperature, draft.maxSteps) === profile.id;
+              return (
+                <button
+                  key={profile.id}
+                  type="button"
+                  data-precision={profile.id}
+                  aria-pressed={active}
+                  title={t(profile.hint)}
+                  onClick={() => onChange(applyPreset(profile.id))}
+                  className={cn(
+                    'h-[26px] rounded-r6 px-2 text-[12.5px] transition-colors',
+                    active
+                      ? 'bg-[var(--bg-accent-subtle)] text-[var(--accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_40%,transparent)]'
+                      : 'bg-[var(--bg-selected)] text-t3 hover:bg-[var(--bg-active)] hover:text-t1',
+                  )}
+                >
+                  {t(profile.label)}
+                </button>
+              );
+            })}
+            {presetFor(draft.temperature, draft.maxSteps) === 'custom' ? (
+              <span data-precision-custom className="px-1 text-[12px] text-t4">
+                {t('Custom')}
+              </span>
+            ) : null}
+          </div>
+        </Field>
         <Field label={t('Temperature')} hint={t('0.2–0.4 suits tool use.')}>
           <div className="flex h-[36px] items-center gap-2.5">
             <input
               type="range"
+              data-temperature
               min={0}
               max={1.5}
               step={0.1}
@@ -304,6 +336,7 @@ function ProviderForm({
           <Field label={t('Max steps')}>
             <input
               type="number"
+              data-max-steps
               min={1}
               max={20}
               value={draft.maxSteps}

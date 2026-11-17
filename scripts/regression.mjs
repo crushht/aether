@@ -1711,6 +1711,39 @@ async function run() {
   assert.equal(compact.lastCompaction(undefined), undefined);
   console.log('PASS context budget: compaction report, dropped previews, summary and last-cut lookup');
 
+  // Precision presets: one click sets both halves, and a hand-tuned pair says so.
+  const presets = await loadTs(path.resolve('lib/agent/model-presets.ts'));
+  assert.equal(presets.clampTemperature(0.34), 0.3, 'one decimal');
+  assert.equal(presets.clampTemperature(2), 1.5, 'the slider maximum holds');
+  assert.equal(presets.clampTemperature(-4), 0);
+  assert.equal(presets.clampTemperature('0.45'), 0.5, 'a string from an input still lands');
+  assert.equal(presets.clampTemperature(Number.NaN), 0.3, 'unreadable becomes the default');
+  assert.equal(presets.clampTemperature(undefined), 0.3);
+  assert.equal(presets.clampSteps(0), 1);
+  assert.equal(presets.clampSteps(999), 20);
+  assert.equal(presets.clampSteps(7.6), 8, 'steps are whole');
+  assert.equal(presets.clampSteps('12'), 12);
+  assert.equal(presets.clampSteps(Number.NaN), 8);
+  assert.deepEqual(presets.applyPreset('precise'), { temperature: 0.1, maxSteps: 6 });
+  assert.deepEqual(presets.applyPreset('creative'), { temperature: 0.7, maxSteps: 20 });
+  assert.deepEqual(presets.applyPreset('nope'), { temperature: 0.3, maxSteps: 8 }, 'an unknown id falls back to balanced');
+  assert.equal(presets.presetFor(0.1, 6), 'precise');
+  assert.equal(presets.presetFor(0.14, 6), 'precise', 'within tolerance');
+  assert.equal(presets.presetFor(0.3, 8), 'balanced', 'the factory default must not read as custom');
+  assert.equal(presets.presetFor(0.7, 20), 'creative');
+  assert.equal(presets.presetFor(0.1, 14), 'custom', 'the right temperature with the wrong step budget is custom');
+  assert.equal(presets.presetFor(0.9, 8), 'custom');
+  assert.equal(presets.presetFor(Number.NaN, Number.NaN), 'balanced', 'unreadable values match the default preset');
+  assert.equal(presets.nextPreset('precise'), 'balanced');
+  assert.equal(presets.nextPreset('balanced'), 'creative');
+  assert.equal(presets.nextPreset('creative'), 'precise');
+  assert.equal(presets.nextPreset('custom'), 'balanced');
+  assert.equal(presets.describePrecision(0.3, 8), 'Balanced · 0.3 · 8');
+  assert.equal(presets.describePrecision(0.5, 9, '自定义'), '自定义 · 0.5 · 9');
+  assert.equal(presets.PRECISION_PRESETS.length, 3);
+  assert.ok(presets.PRECISION_PRESETS.every((profile) => profile.label && profile.hint), 'every chip is named');
+  console.log('PASS precision presets: clamping, chip matching, cycling and the summary line');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 
