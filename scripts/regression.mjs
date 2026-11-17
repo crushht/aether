@@ -1744,6 +1744,63 @@ async function run() {
   assert.ok(presets.PRECISION_PRESETS.every((profile) => profile.label && profile.hint), 'every chip is named');
   console.log('PASS precision presets: clamping, chip matching, cycling and the summary line');
 
+  // Dependency graph: normalised edges, layering, cycles and the cap.
+  const deps = await loadTs(path.resolve('lib/dependency-graph.ts'));
+  const makeIssue = (id, key, relations = []) => ({ id, key, title: `title ${key}`, status: 'todo', relations });
+  const chain = [
+    makeIssue('a', 'ENG-1', [{ type: 'blocks', issueId: 'b' }]),
+    makeIssue('b', 'ENG-2', [{ type: 'blocks', issueId: 'c' }]),
+    makeIssue('c', 'ENG-3'),
+  ];
+  const chainEdges = deps.blockingEdges(chain);
+  assert.deepEqual(chainEdges, [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]);
+  // the other side of the same relation must not become a second edge, or a reversed one
+  const mirroredEdges = deps.blockingEdges([
+    makeIssue('a', 'ENG-1', [{ type: 'blocks', issueId: 'b' }]),
+    makeIssue('b', 'ENG-2', [{ type: 'blocked_by', issueId: 'a' }]),
+  ]);
+  assert.deepEqual(mirroredEdges, [{ from: 'a', to: 'b' }]);
+  assert.deepEqual(deps.blockingEdges([makeIssue('a', 'ENG-1', [{ type: 'related', issueId: 'b' }]), makeIssue('b', 'ENG-2')]), [], 'related is not blocking');
+  assert.deepEqual(deps.blockingEdges([makeIssue('a', 'ENG-1', [{ type: 'blocks', issueId: 'ghost' }])]), [], 'an edge to a missing issue is dropped');
+  assert.deepEqual(deps.blockingEdges([makeIssue('a', 'ENG-1', [{ type: 'blocks', issueId: 'a' }])]), [], 'no self loops');
+
+  const graph = deps.dependencyGraph('c', chain);
+  assert.equal(graph.nodes.length, 3);
+  assert.equal(graph.edges.length, 2);
+  assert.equal(graph.cyclic, false);
+  assert.deepEqual(graph.cycleIds, []);
+  assert.equal(graph.truncated, false);
+  assert.equal(graph.rootId, 'c');
+  const layerOf = Object.fromEntries(graph.nodes.map((node) => [node.key, node.layer]));
+  assert.deepEqual(layerOf, { 'ENG-1': 0, 'ENG-2': 1, 'ENG-3': 2 }, 'a chain reads left to right');
+  assert.equal(graph.nodes.find((node) => node.key === 'ENG-3').root, true);
+  assert.ok(graph.width > graph.height, 'a three-deep chain is wider than it is tall');
+  assert.ok(graph.edges.every((edge) => edge.path.startsWith('M') && !edge.path.includes('NaN')));
+  assert.ok(graph.nodes.every((node) => Number.isFinite(node.x) && Number.isFinite(node.y)));
+  assert.equal(deps.dependencyGraph('b', chain).nodes.length, 3, 'a walk reaches blockers and blocked alike');
+  assert.equal(deps.dependencyGraph('ghost', chain).nodes.length, 0, 'an unknown focus draws nothing');
+  assert.equal(deps.dependencyGraph('ghost', chain).rootId, null);
+
+  const looped = [
+    makeIssue('a', 'ENG-1', [{ type: 'blocks', issueId: 'b' }]),
+    makeIssue('b', 'ENG-2', [{ type: 'blocks', issueId: 'a' }]),
+  ];
+  const cyclicGraph = deps.dependencyGraph('a', looped);
+  assert.equal(cyclicGraph.cyclic, true);
+  assert.deepEqual([...cyclicGraph.cycleIds].sort(), ['a', 'b']);
+  assert.equal(cyclicGraph.edges.length, 2);
+  assert.deepEqual(deps.cycleIds(['a', 'b', 'c'], [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]), ['a', 'b']);
+  assert.deepEqual(deps.cycleIds(['a', 'b'], [{ from: 'a', to: 'b' }]), [], 'a plain chain has no cycle');
+
+  const wide = Array.from({ length: 40 }, (_, index) =>
+    makeIssue(`n${index}`, `ENG-${index + 1}`, index < 39 ? [{ type: 'blocks', issueId: `n${index + 1}` }] : []),
+  );
+  const cappedGraph = deps.dependencyGraph('n0', wide, { depth: 40, maxNodes: 6 });
+  assert.equal(cappedGraph.nodes.length, 6, 'the cap holds');
+  assert.equal(cappedGraph.truncated, true, 'and the UI is told');
+  assert.equal(deps.dependencyGraph('n0', wide, { depth: 1 }).nodes.length, 2, 'depth 1 is one hop');
+  console.log('PASS dependency graph: normalised edges, layering, cycles, caps and geometry');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 

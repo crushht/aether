@@ -11,6 +11,7 @@ import {
   List,
   ListChecks,
   MoreHorizontal,
+  Network,
   Plus,
   Star,
   Trash2,
@@ -38,6 +39,7 @@ import { Avatar, Button, IconButton, Kbd } from '@/components/ui/primitives';
 import { MenuItem, MenuLabel, MenuSeparator, Popover, Tooltip } from '@/components/ui/popover';
 import { StatusIcon } from '@/components/ui/icons';
 import { IssueProperties } from './issue-properties';
+import { DependencyGraph } from './dependency-graph';
 import { AgentPanel } from '@/components/agent/agent-panel';
 import { Markdown } from './markdown';
 import { editableHtmlToMarkdown, markdownToEditableHtml } from '@/lib/markdown-editable';
@@ -945,6 +947,7 @@ function Relations({ issue }: { issue: Issue }) {
   const t = useT();
 
   const [open, setOpen] = React.useState(false);
+  const [showGraph, setShowGraph] = React.useState(false);
   const [step, setStep] = React.useState<'type' | 'issue'>('type');
   const [type, setType] = React.useState<RelationType>('blocked_by');
   const [query, setQuery] = React.useState('');
@@ -958,6 +961,8 @@ function Relations({ issue }: { issue: Issue }) {
       ),
     [issue.relations],
   );
+  // only blocking relations have a direction worth drawing
+  const blocking = rows.some((rel) => rel.type === 'blocks' || rel.type === 'blocked_by');
 
   const candidates = React.useMemo(() => {
     const taken = new Set(rows.map((r) => r.issueId));
@@ -972,9 +977,10 @@ function Relations({ issue }: { issue: Issue }) {
     if (open && step === 'issue') inputRef.current?.focus();
   }, [open, step]);
 
-  // a different issue means a fresh picker
+  // a different issue means a fresh picker, and a fresh look at the map
   React.useEffect(() => {
     setOpen(false);
+    setShowGraph(false);
     setStep('type');
     setQuery('');
   }, [issue.id]);
@@ -996,6 +1002,18 @@ function Relations({ issue }: { issue: Issue }) {
         <h2 className="text-[14px] font-[590] text-t1">{t('Relations')}</h2>
         {rows.length ? <span className="tnum text-[13px] text-t4">{rows.length}</span> : null}
         <div className="flex-1" />
+        {blocking ? (
+          <button
+            type="button"
+            data-dep-toggle
+            aria-pressed={showGraph}
+            onClick={() => setShowGraph((value) => !value)}
+            className="flex h-[24px] items-center gap-1 rounded-r6 px-1.5 text-[13px] text-t4 transition-colors hover:bg-[var(--bg-hover)] hover:text-t2"
+          >
+            <Network size={12} strokeWidth={2} />
+            {t('Map')}
+          </button>
+        ) : null}
         <button
           ref={anchorRef}
           type="button"
@@ -1007,6 +1025,8 @@ function Relations({ issue }: { issue: Issue }) {
           {t('Add relation')}
         </button>
       </div>
+
+      {showGraph ? <DependencyGraph issue={issue} /> : null}
 
       {rows.length ? (
         <div className="mt-1 flex flex-col">
