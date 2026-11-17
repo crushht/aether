@@ -7,6 +7,7 @@ import { useView } from '@/lib/store/view';
 import { useUI } from '@/lib/store/ui';
 import { useT } from '@/lib/use-t';
 import { burnUp, burndown, burndownGeometry, cycleIssues, cyclePhase, cycleStats } from '@/lib/cycles';
+import { throughputBars, weeklyThroughput } from '@/lib/cycle-throughput';
 import { STATUSES, type Cycle } from '@/lib/types';
 import { cn, dateRange, shortDate } from '@/lib/utils';
 import { Avatar, Button } from '@/components/ui/primitives';
@@ -292,6 +293,8 @@ function CycleDetail({
         <BurnUpChart cycle={cycle} series={series} now={now} />
       </div>
 
+      <ThroughputCard issues={cycleIssues(issues, cycle.id)} now={now} />
+
       <div className="mt-4">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-[510] text-t2">{t('Issues in this cycle')}</span>
@@ -329,6 +332,71 @@ function CycleDetail({
             {t('No issues in this cycle')}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ThroughputCard({
+  issues,
+  now,
+}: {
+  issues: ReturnType<typeof useData.getState>['issues'];
+  now: number;
+}) {
+  const t = useT();
+  const report = React.useMemo(() => weeklyThroughput(issues, now), [issues, now]);
+  const bars = React.useMemo(() => throughputBars(report), [report]);
+  const [hover, setHover] = React.useState<string | null>(null);
+
+  return (
+    <div className="mt-3 rounded-r8 bg-[var(--bg-hover)] p-3" data-throughput data-throughput-weeks={report.weeks.length}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px] font-[510] text-t2">{t('Throughput')}</span>
+        <span className="tnum text-[12.5px] text-t4" data-throughput-average={report.averagePoints}>
+          {report.completed
+            ? t('{points} points per week', { points: report.averagePoints })
+            : t('Nothing completed in six weeks')}
+        </span>
+      </div>
+      <div className="mt-2 flex items-end gap-1.5" data-throughput-bars>
+        {report.weeks.map((week, index) => {
+          const active = hover === week.key;
+          return (
+            <div
+              key={week.key}
+              data-throughput-week={week.key}
+              data-throughput-points={week.points}
+              title={`${week.key} · ${week.points} pt · ${week.issues} issue(s)`}
+              onMouseEnter={() => setHover(week.key)}
+              onMouseLeave={() => setHover(null)}
+              className="flex min-w-0 flex-1 flex-col items-center gap-1"
+            >
+              <div className="flex h-[44px] w-full items-end">
+                <div
+                  data-throughput-bar={week.points}
+                  className={cn('w-full rounded-t-[3px] transition-colors', active ? 'bg-accent' : 'bg-[color-mix(in_srgb,var(--accent)_55%,transparent)]')}
+                  style={{ height: `${bars[index]}px` }}
+                />
+              </div>
+              <span className="tnum text-[10.5px] text-t4">{week.key.slice(5)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-t4">
+        <span className="tnum" data-throughput-closed={report.completed}>
+          {t('{n} closed', { n: report.completed })}
+        </span>
+        <span className="tnum" data-throughput-days={report.averageDays ?? ''}>
+          {report.averageDays === null
+            ? t('No close time yet')
+            : t('{days} days to close on average', { days: report.averageDays })}
+        </span>
+        {report.estimated ? <span data-throughput-estimated>{t('{n} counted as 1 point (no estimate)', { n: report.estimated })}</span> : null}
+        {report.approximated ? (
+          <span data-throughput-approximated>{t('{n} use the last edit as the close time', { n: report.approximated })}</span>
+        ) : null}
       </div>
     </div>
   );

@@ -1869,6 +1869,59 @@ async function run() {
   assert.equal(wip.wipHint(wip.wipReadout(2, null)), '');
   console.log('PASS WIP limits: normalising, clearing, counting and the header line');
 
+  // Throughput: week buckets in local time, completion moments, and the honest average.
+  const flow = await loadTs(path.resolve('lib/cycle-throughput.ts'), { './cycles': cyclesLib });
+  const localMs = (year, month, day, hour = 12) => +new Date(year, month - 1, day, hour);
+  // 2026-11-18 is a Wednesday; its week opens on Monday 2026-11-16.
+  const wed = localMs(2026, 11, 18);
+  assert.equal(flow.weekStart(wed), localMs(2026, 11, 16, 0), 'weeks open on Monday');
+  assert.equal(flow.weekStart(localMs(2026, 11, 16, 0)), localMs(2026, 11, 16, 0), 'a Monday is its own week start');
+  assert.equal(new Date(flow.weekStart(localMs(2026, 11, 22))).getDay(), 1, 'Sunday still belongs to the week that opened on Monday');
+  assert.ok(Number.isNaN(flow.weekStart(Number.NaN)));
+
+  const activity = (to, at) => ({ id: `a${at}`, actorId: 'u1', kind: 'status', to, createdAt: new Date(at).toISOString() });
+  const closedIssue = (id, estimate, created, doneAt, extra = []) => ({
+    id, key: `ENG-${id}`, title: id, status: 'done', estimate, createdAt: new Date(created).toISOString(),
+    updatedAt: new Date(doneAt).toISOString(), activities: [activity('started', created + 1000), activity('done', doneAt), ...extra],
+    comments: [],
+  });
+  assert.equal(flow.completionMoment({ status: 'todo', updatedAt: new Date(wed).toISOString(), activities: [] }), null);
+  const exact = flow.completionMoment(closedIssue('1', 3, wed - 3 * 86_400_000, wed));
+  assert.deepEqual(exact, { at: wed, approximated: false });
+  const twice = flow.completionMoment(closedIssue('2', 2, wed - 5 * 86_400_000, wed, [activity('done', wed + 60_000)]));
+  assert.equal(twice.at, wed + 60_000, 'the latest status change wins');
+  const noHistory = flow.completionMoment({ status: 'done', updatedAt: new Date(wed).toISOString(), activities: [] });
+  assert.deepEqual(noHistory, { at: wed, approximated: true }, 'an imported issue falls back to the last edit, and says so');
+
+  const reportIssues = [
+    closedIssue('a', 3, wed - 2 * 86_400_000, wed - 86_400_000),
+    closedIssue('b', null, wed - 8 * 86_400_000, wed), // no estimate → 1 point
+    closedIssue('c', 5, wed - 9 * 86_400_000, wed - 14 * 86_400_000), // last week
+    { ...closedIssue('d', 2, wed - 86_400_000, wed), status: 'canceled', activities: [] }, // not done
+    closedIssue('e', 4, wed - 86_400_000, wed + 30 * 86_400_000), // still in the future
+  ];
+  const flowReport = flow.weeklyThroughput(reportIssues, wed);
+  assert.equal(flowReport.weeks.length, 6, 'six weeks by default');
+  assert.equal(flowReport.weeks.at(-1).start, localMs(2026, 11, 16, 0), 'the current week is last');
+  assert.equal(flowReport.completed, 3, 'canceled and future completions do not count');
+  assert.equal(flowReport.estimated, 1, 'the unestimated issue is counted as one point');
+  assert.equal(flowReport.weeks.at(-1).points, 4, '3 points + 1 for the unestimated issue');
+  assert.equal(flowReport.weeks.at(-1).issues, 2);
+  assert.equal(flowReport.weeks.at(-2).points, 0, 'a quiet week is a real bucket, not a gap');
+  assert.equal(flowReport.weeks.at(-3).points, 5, 'the issue finished three weeks ago lands there');
+  assert.equal(flowReport.averagePoints, Math.round(((5 + 4) / 6) * 10) / 10);
+  assert.ok(flowReport.averageDays !== null && flowReport.averageDays > 0);
+  assert.equal(flow.weeklyThroughput(reportIssues, wed, 2).weeks.length, 2, 'the window can be shortened');
+  assert.equal(flow.weeklyThroughput([], wed).averageDays, null, 'no completions means no average');
+  assert.equal(flow.weeklyThroughput([], wed).averagePoints, 0);
+  assert.deepEqual(flow.throughputBars(flowReport), flow.throughputBars(flowReport), 'the bars are deterministic');
+  const bars = flow.throughputBars(flowReport, 44);
+  assert.equal(bars.length, 6);
+  assert.ok(bars.every((value) => value >= 0 && value <= 44));
+  assert.equal(Math.max(...bars), 44, 'the busiest week fills the height');
+  assert.equal(flow.throughputBars({ ...flowReport, weeks: flowReport.weeks.map((week) => ({ ...week, points: 0 })) }).every((value) => value === 0), true);
+  console.log('PASS throughput: local week buckets, completion moments and the per-week average');
+
   console.log('Browser regression: node scripts/e2e.mjs (with the dev server running)');
 }
 
