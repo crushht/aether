@@ -1,5 +1,7 @@
 import type { Issue } from './types';
 import { sortIssues, type Filters, type IssueScope, type SortKey, type TabKey } from './store/view';
+import { issueMatchesQuery, parseQuery } from './query';
+import { queryContext } from './query-context';
 
 export interface VisibleArgs {
   issues: Issue[];
@@ -41,10 +43,13 @@ export function selectVisibleIssues({ issues, tab, filters, sort, scope }: Visib
   }
 
   if (filters.query.trim()) {
-    const q = filters.query.trim().toLowerCase();
-    list = list.filter(
-      (i) => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q),
-    );
+    // The same grammar the search page uses: `status:todo assignee:me` filters,
+    // plain words still search titles and keys.
+    const parsed = parseQuery(filters.query);
+    if (parsed.terms.length || parsed.text.length) {
+      const context = queryContext();
+      list = list.filter((issue) => issueMatchesQuery(issue, parsed, context));
+    }
   }
 
   return sortIssues(list, sort);

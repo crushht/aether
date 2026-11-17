@@ -13,6 +13,7 @@ import { Avatar, PillButton } from '@/components/ui/primitives';
 import { MenuItem, MenuLabel, MenuSeparator, Popover, Tooltip } from '@/components/ui/popover';
 import { PriorityIcon, StatusIcon } from '@/components/ui/icons';
 import { cn, isImeComposing } from '@/lib/utils';
+import { describeQuery, parseQuery } from '@/lib/query';
 
 const statusColor = (key: StatusKey, color: string) => ({
   color:
@@ -216,6 +217,30 @@ export function FilterButton({ activeCount }: { activeCount: number }) {  const 
             >
               {t('Clear')}
             </button>
+          ) : null}
+        </div>
+        <MenuSeparator />
+        <div className="px-2 pb-2">
+          <input
+            data-filter-query
+            value={filters.query}
+            onChange={(event) => setFilter('query', event.target.value)}
+            placeholder={t('status:todo · assignee:me · -label:Bug')}
+            aria-label={t('Filter query')}
+            spellCheck={false}
+            className="h-[30px] w-full rounded-r6 bg-[var(--bg-base)] px-2 text-[12.5px] text-t1 outline-none shadow-[inset_0_0_0_1px_var(--line)] placeholder:text-t4 focus:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_60%,transparent)]"
+          />
+          {filters.query.trim() ? (
+            <p className="mt-1 flex flex-wrap gap-1" data-filter-query-chips>
+              {describeQuery(parseQuery(filters.query)).map((part) => (
+                <span
+                  key={part}
+                  className="rounded-full bg-[var(--bg-hover)] px-1.5 py-0.5 font-mono text-[10.5px] text-t3"
+                >
+                  {part}
+                </span>
+              ))}
+            </p>
           ) : null}
         </div>
         <MenuSeparator />

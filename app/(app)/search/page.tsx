@@ -12,6 +12,8 @@ import { StatusIcon } from '@/components/ui/icons';
 import { useT } from '@/lib/use-t';
 import { cn } from '@/lib/utils';
 import { highlightSegments, matchSnippet } from '@/lib/highlight';
+import { describeQuery, issueMatchesQuery, parseQuery } from '@/lib/query';
+import { queryContext } from '@/lib/query-context';
 
 const LIMIT = 20;
 
@@ -42,6 +44,11 @@ export default function SearchPage() {
   const deferredNeedle = deferredQuery.trim().toLowerCase();
   const stale = deferredQuery !== query;
 
+  // `status:todo assignee:me` is parsed, not searched for; plain words still
+  // match titles and keys, so the box keeps working the way people expect.
+  const parsed = React.useMemo(() => parseQuery(deferredQuery), [deferredQuery]);
+  const structured = parsed.terms.length > 0;
+
   React.useEffect(() => {
     if (!needle) return;
     const timer = window.setTimeout(() => pushHistory(needle), 900);
@@ -51,7 +58,11 @@ export default function SearchPage() {
 
   const issueHits = deferredNeedle
     ? issues
-        .filter((issue) => match(issue.title) || match(issue.key) || match(issue.description))
+        .filter((issue) =>
+          structured
+            ? issueMatchesQuery(issue, parsed, queryContext())
+            : match(issue.title) || match(issue.key) || match(issue.description),
+        )
         .slice(0, LIMIT)
     : [];
   const projectHits = deferredNeedle
@@ -139,9 +150,30 @@ export default function SearchPage() {
         ) : null}
       </div>
 
+      {parsed.terms.length || parsed.unknown.length ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5" data-query-chips>
+          {describeQuery(parsed).map((part) => (
+            <span
+              key={part}
+              className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 font-mono text-[11px] text-t3"
+            >
+              {part}
+            </span>
+          ))}
+          {parsed.unknown.length ? (
+            <span className="text-[11.5px] text-[var(--red)]" data-query-unknown>
+              {t('Unknown filter: {q}', { q: parsed.unknown.join(', ') })}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       {!deferredNeedle ? (
         <div className="mt-4">
           <p className="text-[13px] text-t4">{t('Type to search across the workspace.')}</p>
+          <p className="mt-1 font-mono text-[11.5px] text-t4" data-query-syntax>
+            {t('status:todo · assignee:me · label:Bug · -priority:low · due:overdue · "exact phrase"')}
+          </p>
           {recent.length ? (
             <div className="mt-3" data-search-recent>
               <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[.05em] text-t4">
@@ -190,7 +222,9 @@ export default function SearchPage() {
           </div>
         </div>
       ) : total === 0 ? (
-        <p className="mt-4 text-[13px] text-t4">{t('No results for "{q}"', { q: query })}</p>
+        <p className="mt-4 text-[13px] text-t4" data-search-empty>
+          {t('No results for "{q}"', { q: query })}
+        </p>
       ) : (
         <div className={cn('mt-4 flex flex-col gap-4 transition-opacity', stale && 'opacity-60')}>
           {issueHits.length ? (

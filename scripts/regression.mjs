@@ -621,6 +621,60 @@ async function run() {
   assert.ok(mailCopy.subject.includes('登录') && mailCopy.text.includes('123456') && mailCopy.html.includes('123456'));
   console.log('PASS email rules: address, code shape, masking, cooldown, live check and mail copy');
 
+  // Filter query language: `status:todo assignee:me label:Bug -priority:low`.
+  const query = await loadTs(path.resolve('lib/query.ts'));
+  assert.deepEqual(query.tokenize('status:todo "two words" label:"needs design"'), [
+    'status:todo',
+    '"two words"',
+    'label:"needs design"',
+  ]);
+  const q = query.parseQuery('status:todo,in-progress label:Bug -priority:low "login flow" owner:me');
+  assert.equal(q.terms.length, 3);
+  assert.deepEqual(q.terms[0], { key: 'status', values: ['todo', 'in-progress'], negated: false });
+  assert.deepEqual(q.terms[2], { key: 'priority', values: ['low'], negated: true });
+  assert.deepEqual(q.text, ['login flow', 'owner:me']);
+  assert.deepEqual(q.unknown, ['owner']);
+  assert.deepEqual(query.describeQuery(query.parseQuery('status:done -label:Bug')), ['status:done', '-label:bug']);
+
+  const fixture = (patch) => ({
+    id: patch.key ?? 'i1',
+    key: 'ENG-1',
+    title: 'Login flow breaks',
+    description: 'SSO callback drops the cookie',
+    status: 'todo',
+    priority: 'high',
+    assigneeId: 'u_me',
+    creatorId: 'u_me',
+    labelIds: ['l_bug'],
+    projectId: 'p1',
+    cycleId: 'c1',
+    dueDate: '2020-01-01T00:00:00.000Z',
+    ...patch,
+  });
+  const ctx = {
+    meId: 'u_me',
+    now: Date.parse('2026-01-10T00:00:00Z'),
+    labelName: (id) => (id === 'l_bug' ? 'Bug' : undefined),
+    projectName: (id) => (id === 'p1' ? 'Atlas' : undefined),
+  };
+  const match = (text, issue = fixture({})) => query.issueMatchesQuery(issue, query.parseQuery(text), ctx);
+  assert.ok(match('status:todo'), 'status matches');
+  assert.ok(!match('status:done'), 'a status the issue does not have fails');
+  assert.ok(match('priority:high'), 'priority matches');
+  assert.ok(match('assignee:me'), 'assignee:me resolves through the context');
+  assert.ok(!match('assignee:none'), 'an assigned issue is not unassigned');
+  assert.ok(match('label:bug'), 'label names are case-insensitive');
+  assert.ok(match('project:atlas'), 'project names match');
+  assert.ok(match('cycle:c1'), 'cycle ids match');
+  assert.ok(match('due:overdue'), 'overdue compares against now');
+  assert.ok(match('-status:done'), 'negation inverts: a todo issue is not done');
+  assert.ok(!match('-status:todo'), 'negation inverts: a todo issue is todo');
+  assert.ok(match('login flow'), 'free words search title and description');
+  assert.ok(!match('login nope'), 'every free word must appear');
+  assert.ok(match('is:open'), 'is:open covers unfinished issues');
+  assert.ok(query.issueMatchesQuery(fixture({}), query.parseQuery(''), ctx), 'an empty query matches everything');
+  console.log('PASS query language: tokenizer, key aliases, negation, names, due dates and free words');
+
   // Who may receive a code: closed by default, so a relay cannot become a
   // sender for the whole internet.
   const mailPolicy = await loadTs(path.resolve('lib/mail-policy.ts'));
