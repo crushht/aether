@@ -47,7 +47,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "autoprefixer": "^10.4.21",
-    "electron": "^45.3.0",
+    "electron": "^45.4.1",
     "electron-builder": "^25.1.8",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.29",
